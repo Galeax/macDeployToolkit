@@ -1,0 +1,44 @@
+{
+  "_commentaire": [
+    "TEST manifest, to validate macdeploy on a Mac without deploying anything.",
+    "",
+    "Targets TextEdit: present on every Mac, harmless to close, and its bundle ID",
+    "is stable. No `detection` block: without it, `pre` never short-circuits and",
+    "always goes through the gate, which is precisely what we are testing.",
+    "No `payload` block either: nothing will be installed.",
+    "",
+    "Deliberately short delays so the tests don't make you wait:",
+    "  countdownSeconds 60      instead of 300",
+    "  persistPromptSeconds 20  instead of 60",
+    "  maxDialogSeconds 120     instead of 1200",
+    "",
+    "With forceCloseWhenExhausted set to true, the deferrable dialog already",
+    "carries its own countdown (60 s here) and installs on expiry: persistPromptSeconds",
+    "and maxDialogSeconds therefore do not apply. Set forceCloseWhenExhausted to",
+    "false to test persistence and the dialog budget.",
+    "",
+    "Usage:",
+    "  open -a TextEdit",
+    "  sudo .build/debug/macdeploy pre -m Examples/test-textedit.json \\",
+    "       --state /tmp/macdeploy-test-state --log /tmp/macdeploy-test.log -v"
+  ],
+
+  "packageKey": "test-textedit",
+  "displayName": "TextEdit (macdeploy test)",
+  "version": "1.0",
+  "publisher": "Galeax",
+  "mode": "interactive",
+
+  "blockingApps": [
+    { "bundleIdentifier": "com.apple.TextEdit", "displayName": "TextEdit" }
+  ],
+
+  "deferral": {
+    "allowDeferral": true,
+    "maxDeferrals": 2,
+    "countdownSeconds": 60,
+    "persistPromptSeconds": 20,
+    "maxDialogSeconds": 120,
+    "forceCloseWhenExhausted": true
+  }
+}
