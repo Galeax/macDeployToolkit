@@ -1,23 +1,34 @@
-# MacDeployToolkit
+# macAppDeployToolkit
 
-## What is it
+Like [PSAppDeployToolkit](https://github.com/psappdeploytoolkit/psappdeploytoolkit), but for macOS.
 
-Application deployment framework for macOS, in the spirit of **PSADT**, driven by Intune.
+## Easy Enterprise App Deployment for macOS
 
-Intune can install a `.pkg`. What it cannot do is warn the user that an update is about to close Slack, grant them a few deferrals, show a countdown, then close the application and install. That is the sole purpose of this tool.
+macADT (macAppDeployToolkit) is an Enterprise App Deployment framework for macOS, in the spirit of **PSADT**, compatible with Intune.
 
-**The model, in one sentence:** a **per-app signed pkg**, self-contained, that holds **everything** — the `macdeploy` agent, swiftDialog, the manifest and the vendor's payload. The operator chooses the **deployment mode** and any **pre/post scripts** at deployment time.
+## Why this project?
 
-**No dependency to deploy on the fleet**: swiftDialog travels inside the pkg, there is no configuration profile to lay down, and the agent is removed after each successful installation. The user-facing dialog is rendered by **swiftDialog** (an external, notarized binary), not by a bundled SwiftUI app — the UI is deliberately kept swappable behind a `DialogSpec` indirection.
+Intune can install a `.pkg`. However, if the app we want to patch is already opened, it will fail. This issue is very common with web browser patched over Intune on macOS devices.
+
+macADT improves the deployment of other pkg files, by adding interactivity like:
+- ability to warn the user that we will close its app;
+- ability to allow the user to defer the installation;
+- ability to show a countdown;
+- ability to close automatically an app and then to update it.
+
+macADT produces a complete **pkg** file, that contains everything: the **swiftDialog**, the **app** that adds interactivity, a **manifest**, and the **third party app** to deploy or patch. The third party can be deployed through a **pkg** and **dmg**.
+
+You can choose the **deployment mode** (silent, non-interactive, interactive, like in PSADT), and even add any **pre/post scripts**.
+
 
 ## Key features
 
-- **Centralized logging** — one per-app log under `/var/log/coreupdate/`, plus a unified log subsystem (`com.coreupdate.deploy`) and an inspectable state file; `macdeploy status --json` is the source of truth.
-- **Closing running applications** — macdeploy detects blocking apps itself (libproc, agent side) and closes them with `SIGKILL`. No PPPC profile, no AppleEvent, no TCC authorization.
+- **Centralized logging** — one per-app log under `/var/log/macadt/`, plus a unified log subsystem (`com.macadt.deploy`) and an inspectable state file; `macadt-deploy status --json` is the source of truth.
+- **Closing running applications** — macadt-deploy detects blocking apps itself (libproc, agent side) and closes them with `SIGKILL`. No PPPC profile, no AppleEvent, no TCC authorization.
 - **User-facing dialog** — a warning dialog (swiftDialog) with **deferrals**, a **countdown**, an optional **deadline**, and persistence that brings an ignored dialog back to the foreground.
 - **Three deployment modes** — `interactive`, `nonInteractive`, `silent`, chosen per deployment; what separates them is visibility, not power.
 - **Self-contained signed pkg** — one `build-app-pkg.sh` produces a signed, universal pkg that carries the agent, swiftDialog, the manifest and the payload. Xcode not required.
-- **DMG wrapper** — ships apps distributed as a DMG through Intune's `macOSPkgApp`, which `macOSDmgApp` cannot do (it accepts no scripts).
+- **DMG wrapper** — supports apps distributed as a DMG, as it will then create a PKG and deploy it through Intune's `macOSPkgApp`, thus allowing to run pre and post scripts for DMG.
 - **Per-app hooks** — `pre/post` install and uninstall scripts, confined to the manifest directory and run as root behind four safeguards.
 - **Safe uninstall** — the uninstall plan is a pure, auditable value with an allowlist-by-default path policy, built so a mistake cannot cause a fleet-wide wipe.
 - **`--dry-run`** — the full evaluation without root, without executing anything and without consuming a deferral.
@@ -26,12 +37,12 @@ Intune can install a `.pkg`. What it cannot do is warn the user that an update i
 
 ### How to use it
 
-On a Mac that has swiftDialog (to embed it) and a **Developer ID Installer** certificate:
+On a Mac that has swiftDialog (to embed it) and a **Developer ID Installer** certificate, with a googlechrome.dmg file, run:
 
 ```bash
 # 1. A manifest describes the application (see "The manifest").
 #    2. Build the signed self-contained pkg + the post-install:
-export MDT_TEAM_ID=XXXXXXXXXX
+export MACADT_TEAM_ID=XXXXXXXXXX
 Scripts/build-app-pkg.sh -m chrome.json -p ~/Downloads/googlechrome.dmg --mode Interactive
 # → .build/apps/<packageKey>/<packageKey>.pkg   (the signed package)
 # → .build/apps/<packageKey>/<packageKey>-postinstall.sh   (to paste into Intune)
@@ -86,7 +97,7 @@ The non-interactive modes respect the deferral window before closing: as long as
 
 #### Application detection and closing
 
-macdeploy detects running blocking applications itself (libproc, agent side — works in a daemon context), shows the warning dialog (swiftDialog), then **closes with `SIGKILL`**.
+macadt-deploy detects running blocking applications itself (libproc, agent side — works in a daemon context), shows the warning dialog (swiftDialog), then **closes with `SIGKILL`**.
 
 - **No PPPC profile, no AppleEvent, no TCC.** Closing is a `kill(2)` by PID on the agent side, which depends on no session and requires no authorization.
 - The dialog (warning + deferral + countdown) is **the only window to save one's work**: on consent or at the deadline, the application is killed on the spot, with no "Save?" sheet.
@@ -101,9 +112,9 @@ Intune — "macOS app (PKG)" app, required
   │
   ├─ installer -pkg            [done by Intune — lays down agent + swiftDialog + manifest + payload]
   │
-  └─ post-install script ─> macdeploy install   [root, daemon context]
+  └─ post-install script ─> macadt-deploy install   [root, daemon context]
         ├─ process scan             (libproc)
-        ├─ dialog + deferral        (launchctl asuser → macdeploy-ui → swiftDialog)
+        ├─ dialog + deferral        (launchctl asuser → macadt-deploy-ui → swiftDialog)
         ├─ SIGKILL close            (kill by PID, agent side)
         ├─ DMG mount, .app copy, hardening, detection
         ├─ cleanup (removes agent + swiftDialog + payload; keeps state + logs)
@@ -117,7 +128,7 @@ The templates in `Scripts/templates/` are instantiated by substitution, exactly 
 
 ##### Apps shipped as a DMG
 
-`macOSDmgApp` accepts no script. A DMG app becomes a `macOSPkgApp` whose **payload is the vendor's DMG**. The DMG travels as an opaque file inside the pkg (never mounted on the build host); only the device mounts it, copies the `.app` by atomic swap, hardens and unmounts. macdeploy also handles a `.pkg` or an `.app` inside the DMG, and explicitly refuses an image with several candidates (unless `payload.bundleName`).
+`macOSDmgApp` accepts no script when deployed through Intune. With macADT, a DMG app becomes a `macOSPkgApp` whose **payload is the vendor's DMG**. The DMG travels as a third-party file inside the new pkg (never mounted on the build host), then the device mounts it, copies the `.app`, hardens and unmounts. macadt-deploy also handles a `.pkg` or an `.app` inside the DMG, and explicitly refuses an image with several candidates (unless `payload.bundleName`).
 
 #### Per-app hooks
 
@@ -139,14 +150,6 @@ Paths **relative to the manifest directory**, run as root, killed after 600 s. C
 chown root:wheel hooks/pre-install.sh && chmod 755 hooks/pre-install.sh
 ```
 
-#### Uninstall — plan safety
-
-The most dangerous code in the project: the same plan runs across the whole fleet, so a mistake produces a fleet-wide reinstall, not a ticket. Three design choices, all tested:
-
-1. **The plan is a pure value**, computed without touching the disk, auditable and testable.
-2. **Each path is validated before pruning** (`pkgutil --files` lists intermediate directories, including `Applications` itself).
-3. **Allowlist by default**, not denylist: anything not explicitly under `/Applications`, `/Library`, `/usr/local`, `/opt` or `/Users` is refused. Comparison by components, never by string prefix. Under `/Users`, a minimum depth of 4 plus a relative blocklist.
-
 #### Exit codes
 
 | Code | Meaning |
@@ -160,9 +163,9 @@ Intune only distinguishes 0 / non-zero. Two consequences:
 
 - **A user deferral shows up as "failed"** on the dashboard, functionally correct (will be retried), unreadable in reporting. The source of truth:
   ```bash
-  macdeploy status --json
-  plutil -p "/Library/Application Support/CoreUpdate/Deploy/state.plist"
-  log show --predicate 'subsystem == "com.coreupdate.deploy"' --last 1d
+  macadt-deploy status --json
+  plutil -p "/Library/Application Support/macadt/Deploy/state.plist"
+  log show --predicate 'subsystem == "com.macadt.deploy"' --last 1d
   ```
 - **Codes 70–72 are translated to 0 by the post-install**, otherwise a successful installation requiring a restart would be reinstalled in a loop.
 
@@ -171,9 +174,9 @@ Intune only distinguishes 0 / non-zero. Two consequences:
 Goes through the same evaluation, builds the same dialog and the same uninstall plan, but executes nothing and consumes no deferral. Works **without root**.
 
 ```bash
-macdeploy pre -m Examples/slack.json --dry-run
-macdeploy pre -m Examples/slack.json --dry-run --mode Silent
-macdeploy uninstall -m Examples/slack.json --dry-run --json | jq
+macadt-deploy pre -m Examples/slack.json --dry-run
+macadt-deploy pre -m Examples/slack.json --dry-run --mode Silent
+macadt-deploy uninstall -m Examples/slack.json --dry-run --json | jq
 ```
 
 #### Build
@@ -189,7 +192,7 @@ The script compiles the agent as a universal binary (`x86_64 arm64`), embeds swi
 
 #### Dependencies
 
-**No dependency to install on the device.** macdeploy relies on **swiftDialog** for the UI (notarized by its author, MIT licence; markdown, dark mode, Notification Center, accessibility), but it **travels inside the pkg**: the build scripts copy `Dialog.app` from the build host, and the post-install removes it after installation. swiftDialog must therefore be present **on the build Mac** (`/Library/Application Support/Dialog/Dialog.app`, or `MDT_DIALOG_APP`).
+**No dependency to install on the device.** macadt-deploy relies on **swiftDialog** for the UI (notarized by its author, MIT licence; markdown, dark mode, Notification Center, accessibility), but it **travels inside the pkg**: the build scripts copy `Dialog.app` from the build host, and the post-install removes it after installation. swiftDialog must therefore be present **on the build Mac** (`/Library/Application Support/Dialog/Dialog.app`, or `MACADT_DIALOG_APP`).
 
 **No Swift dependency.** A binary that runs as root on production devices does not drag a supply chain around: argument parsing and manifest format are hand-written. The `DialogSpec` indirection is the point where one would swap the UI without touching the logic.
 
@@ -199,17 +202,17 @@ The script compiles the agent as a universal binary (`x86_64 arm64`), embeds swi
 
 | Path | What lives there |
 |---|---|
-| `Sources/MDTKit/` | Pure-Foundation logic: manifest decoding, deferral engine, uninstall planner, dialog spec, templating, exit codes. **No Apple-only API.** |
-| `Sources/MDTMac/` | Everything that touches the system: libproc process scan, SIGKILL close, DMG mount, installer, hooks, swiftDialog runner, session/IOKit probes. Entirely behind `#if canImport(Darwin)`. |
-| `Sources/MacDeployToolkitCLI/` | The `macdeploy` agent entry point. |
-| `Sources/MacDeployToolkitUI/` | The `macdeploy-ui` helper (runs in the user session, drives swiftDialog). |
-| `Tests/MDTKitTests/` | XCTest suite for `MDTKit` — the whole decision surface, plus `ExamplesTests` which parses every file in `Examples/`. |
+| `Sources/macADTKit/` | Pure-Foundation logic: manifest decoding, deferral engine, uninstall planner, dialog spec, templating, exit codes. **No Apple-only API.** |
+| `Sources/macADTMac/` | Everything that touches the system: libproc process scan, SIGKILL close, DMG mount, installer, hooks, swiftDialog runner, session/IOKit probes. Entirely behind `#if canImport(Darwin)`. |
+| `Sources/macAppDeployToolkitCLI/` | The `macadt-deploy` agent entry point. |
+| `Sources/macAppDeployToolkitUI/` | The `macadt-deploy-ui` helper (runs in the user session, drives swiftDialog). |
+| `Tests/macADTKitTests/` | XCTest suite for `macADTKit` — the whole decision surface, plus `ExamplesTests` which parses every file in `Examples/`. |
 | `Examples/` | Reference manifests. Every one must parse (a test enforces it). |
 | `Scripts/` | Build (`build-app-pkg.sh`, `build-pkg.sh`), the post-install `templates/`, and the Intune `probe-*` / `mac-smoke-test.sh` runbooks. |
 
-#### The cardinal rule: logic goes in MDTKit
+#### The cardinal rule: logic goes in MacADTKit
 
-Put every decision — anything with a branch, a threshold or an edge case — in `MDTKit`, behind a pure function or value type, and let `MDTMac` only *perform* the effect. The payoff is that **the costly-to-get-wrong code is pure and unit-tested**, with no system state to stand up or mock. If you find yourself writing an `if` inside `MDTMac`, ask whether that decision belongs in `MDTKit` with a test next to it.
+Put every decision — anything with a branch, a threshold or an edge case — in `MacADTKit`, behind a pure function or value type, and let `MacADTMac` only *perform* the effect. The payoff is that **the costly-to-get-wrong code is pure and unit-tested**, with no system state to stand up or mock. If you find yourself writing an `if` inside `MacADTMac`, ask whether that decision belongs in `MacADTKit` with a test next to it.
 
 #### Build & test
 
@@ -219,7 +222,7 @@ swift test                    # requires full Xcode — XCTest is not in the Com
 Scripts/mac-smoke-test.sh     # end-to-end validation runbook on a Mac
 ```
 
-`MDTKit` holds all the decision logic and carries the whole XCTest suite. `MDTMac` and the two executables are macOS-only and are covered by the smoke test rather than by unit tests.
+`MacADTKit` holds all the decision logic and carries the whole XCTest suite. `MacADTMac` and the two executables are macOS-only and are covered by the smoke test rather than by unit tests.
 
 `swift test` needs **full Xcode**: with the Command Line Tools alone it fails with `no such module 'XCTest'`. The build scripts, on the other hand, produce a universal binary **without Xcode** (two `--triple` builds + `lipo`), so a CLT-only Mac can still ship a pkg.
 
@@ -227,27 +230,27 @@ Scripts/mac-smoke-test.sh     # end-to-end validation runbook on a Mac
 
 - **No external dependency, ever.** This binary runs as root on production devices; the supply-chain surface must stay nil. Argument parsing and the manifest format are hand-written on purpose — keep them that way.
 - **Allowlist, not denylist**, for anything that deletes or targets a path (see the uninstall planner). Compare by path components, never by string prefix.
-- **Don't hardcode user-facing text.** End-user strings come from the `Messages` catalog (`Manifest.swift`), which ships built-in. Add a string to the catalog with both locales; never inline a dialog label in `MDTMac`.
-- **Prefer a value you can test** over a side effect you can't. The uninstall *plan* is a pure value; the dialog is a `DialogSpec` built in `MDTKit`; MDTMac just executes them.
+- **Don't hardcode user-facing text.** End-user strings come from the `Messages` catalog (`Manifest.swift`), which ships built-in. Add a string to the catalog with both locales; never inline a dialog label in `MacADTMac`.
+- **Prefer a value you can test** over a side effect you can't. The uninstall *plan* is a pure value; the dialog is a `DialogSpec` built in `MacADTKit`; MacADTMac just executes them.
 
 #### Common tasks
 
-- **Add a manifest field** → extend the type in `Sources/MDTKit/Manifest.swift` (tolerant decoding, every key optional with a fallback), document it in the manifest table above, and add a case to `Tests/MDTKitTests/ManifestTests.swift`.
+- **Add a manifest field** → extend the type in `Sources/MacADTKit/Manifest.swift` (tolerant decoding, every key optional with a fallback), document it in the manifest table above, and add a case to `Tests/MacADTKitTests/ManifestTests.swift`.
 - **Add an example** → drop a `.json` in `Examples/`; `ExamplesTests` will require it to parse, so keep it valid. Use real data for real apps, English for prose and `_commentaire`.
 - **Change the post-install** → edit `Scripts/templates/macos-postinstall-standalone.sh.template`. Tokens are `{##PACKAGE_KEY##}` / `{##DEPLOY_MODE##}` and must never appear in a comment line (a test checks this); the rendered script must pass `sh -n`.
-- **Add an exit code** → put the meaning in `Sources/MDTKit/ExitCode.swift` and reflect it in the exit-code table above and, if the post-install must swallow it, in the template's code translation.
+- **Add an exit code** → put the meaning in `Sources/MacADTKit/ExitCode.swift` and reflect it in the exit-code table above and, if the post-install must swallow it, in the template's code translation.
 
 #### Architecture — why two binaries
 
-From the daemon context where Intune runs its scripts, there is no access to the WindowServer: no UI is possible. The dialog must therefore show up in the user session, hence the `macdeploy-ui` helper, launched with `launchctl asuser` **and** `sudo -u` (the first for the session context, the second so the dialog shows up on the user's behalf). Closing applications, on the other hand, happens **on the agent side** via SIGKILL. The agent↔helper dialog goes through stdin/stdout as JSON, one invocation per exchange.
+From the daemon context where Intune runs its scripts, there is no access to the WindowServer: no UI is possible. The dialog must therefore show up in the user session, hence the `macadt-deploy-ui` helper, launched with `launchctl asuser` **and** `sudo -u` (the first for the session context, the second so the dialog shows up on the user's behalf). Closing applications, on the other hand, happens **on the agent side** via SIGKILL. The agent↔helper dialog goes through stdin/stdout as JSON, one invocation per exchange.
 
 #### Project status
 
 | Component | Status |
 |---|---|
-| `MDTKit` — decision logic, manifest, uninstall plan | Unit tests green |
-| `MDTMac` — Apple system calls (libproc, SCDynamicStore, IOKit) | Compiles and runs — validated on macOS 26.3.2 / arm64 |
-| `macdeploy` / `macdeploy-ui` executables | Exercised end to end: gate, deferral, deadline, SIGKILL close, installation of a real DMG, all three modes |
+| `MacADTKit` — decision logic, manifest, uninstall plan | Unit tests green |
+| `MacADTMac` — Apple system calls (libproc, SCDynamicStore, IOKit) | Compiles and runs — validated on macOS 26.3.2 / arm64 |
+| `macadt-deploy` / `macadt-deploy-ui` executables | Exercised end to end: gate, deferral, deadline, SIGKILL close, installation of a real DMG, all three modes |
 | Self-contained pkg build (`build-app-pkg.sh`) | Operational, signs the pkg on the build host |
 
-The split into two modules is deliberate: `MDTKit` is pure Foundation and carries all the logic where a mistake is costly, under unit test; `MDTMac` is entirely behind `#if canImport(Darwin)`.
+The split into two modules is deliberate: `MacADTKit` is pure Foundation and carries all the logic where a mistake is costly, under unit test; `MacADTMac` is entirely behind `#if canImport(Darwin)`.
