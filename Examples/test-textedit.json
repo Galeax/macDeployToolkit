@@ -1,6 +1,6 @@
 {
   "_commentaire": [
-    "TEST manifest, to validate macdeploy on a Mac without deploying anything.",
+    "TEST manifest, to validate macadt-deploy on a Mac without deploying anything.",
     "",
     "Targets TextEdit: present on every Mac, harmless to close, and its bundle ID",
     "is stable. No `detection` block: without it, `pre` never short-circuits and",
@@ -19,12 +19,12 @@
     "",
     "Usage:",
     "  open -a TextEdit",
-    "  sudo .build/debug/macdeploy pre -m Examples/test-textedit.json \\",
-    "       --state /tmp/macdeploy-test-state --log /tmp/macdeploy-test.log -v"
+    "  sudo .build/debug/macadt-deploy pre -m Examples/test-textedit.json \\",
+    "       --state /tmp/macadt-deploy-test-state --log /tmp/macadt-deploy-test.log -v"
   ],
 
   "packageKey": "test-textedit",
-  "displayName": "TextEdit (macdeploy test)",
+  "displayName": "TextEdit (macadt-deploy test)",
   "version": "1.0",
   "publisher": "Galeax",
   "mode": "interactive",

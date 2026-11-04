@@ -6,23 +6,23 @@ import PackageDescription
 // parsing and the manifest format (JSON, via Foundation) are hand-written.
 //
 // Split into two modules:
-//  - MDTKit  : pure Foundation, no Apple API — all the decision logic, kept
+//  - MacADTKit  : pure Foundation, no Apple API — all the decision logic, kept
 //             unit-testable in isolation from the system.
-//  - MDTMac  : AppKit / libproc / SCDynamicStore / IOKit, entirely gated behind
+//  - MacADTMac  : AppKit / libproc / SCDynamicStore / IOKit, entirely gated behind
 //             `#if canImport(Darwin)` (the sources compile to nothing elsewhere).
 let package = Package(
-    name: "MacDeployToolkit",
+    name: "MacAppDeployToolkit",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "macdeploy", targets: ["MacDeployToolkitCLI"]),
-        .executable(name: "macdeploy-ui", targets: ["MacDeployToolkitUI"]),
-        .library(name: "MDTKit", targets: ["MDTKit"]),
+        .executable(name: "macadt-deploy", targets: ["MacAppDeployToolkitCLI"]),
+        .executable(name: "macadt-deploy-ui", targets: ["MacAppDeployToolkitUI"]),
+        .library(name: "MacADTKit", targets: ["MacADTKit"]),
     ],
     targets: [
-        .target(name: "MDTKit"),
-        .target(name: "MDTMac", dependencies: ["MDTKit"]),
-        .executableTarget(name: "MacDeployToolkitCLI", dependencies: ["MDTKit", "MDTMac"]),
-        .executableTarget(name: "MacDeployToolkitUI", dependencies: ["MDTKit", "MDTMac"]),
-        .testTarget(name: "MDTKitTests", dependencies: ["MDTKit"]),
+        .target(name: "MacADTKit"),
+        .target(name: "MacADTMac", dependencies: ["MacADTKit"]),
+        .executableTarget(name: "MacAppDeployToolkitCLI", dependencies: ["MacADTKit", "MacADTMac"]),
+        .executableTarget(name: "MacAppDeployToolkitUI", dependencies: ["MacADTKit", "MacADTMac"]),
+        .testTarget(name: "MacADTKitTests", dependencies: ["MacADTKit"]),
     ]
 )

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Builds, signs and notarizes the macdeploy installation package.
+# Builds, signs and notarizes the macadt-deploy installation package.
 # TO RUN ON A MAC.
 #
 # PREREQUISITES — this is the project's critical administrative path, not technical:
@@ -44,14 +44,14 @@ set -euo pipefail
 TEAM_ID="${MDT_TEAM_ID:-TEAMID_TO_REPLACE}"
 APP_CERT="${MDT_APP_CERT:-Developer ID Application: Galeax ($TEAM_ID)}"
 PKG_CERT="${MDT_PKG_CERT:-Developer ID Installer: Galeax ($TEAM_ID)}"
-KEYCHAIN_PROFILE="${MDT_NOTARY_PROFILE:-coreupdate-notary}"
+KEYCHAIN_PROFILE="${MDT_NOTARY_PROFILE:-macadt-notary}"
 
-IDENTIFIER="com.coreupdate.deploy.pkg"
-INSTALL_DIR="/usr/local/coreupdate"
+IDENTIFIER="com.macadt.deploy.pkg"
+INSTALL_DIR="/usr/local/macadt"
 # swiftDialog embedded: the device has no dependency to pre-install. We copy the
 # whole bundle (/usr/local/bin/dialog is just a link to it).
 DIALOG_APP_SRC="${MDT_DIALOG_APP:-/Library/Application Support/Dialog/Dialog.app}"
-VERSION="$(grep -o 'version = "[^"]*"' Sources/MDTKit/DryRunReport.swift | head -1 | cut -d'"' -f2)"
+VERSION="$(grep -o 'version = "[^"]*"' Sources/MacADTKit/DryRunReport.swift | head -1 | cut -d'"' -f2)"
 
 BUILD_DIR=".build/package"
 PAYLOAD="$BUILD_DIR/payload"
@@ -69,7 +69,7 @@ for arg in "$@"; do
   esac
 done
 
-echo "== macdeploy $VERSION =="
+echo "== macadt-deploy $VERSION =="
 
 # ---------------------------------------------------------------------- compile
 
@@ -93,7 +93,7 @@ fi
 cp -R "$DIALOG_APP_SRC" "$PAYLOAD$INSTALL_DIR/Dialog.app"
 echo "== swiftDialog embedded from $DIALOG_APP_SRC =="
 
-mkdir -p "$PAYLOAD/Library/Application Support/CoreUpdate/Deploy/manifests"
+mkdir -p "$PAYLOAD/Library/Application Support/MacADT/Deploy/manifests"
 
 # ----------------------------------------------------------------- signing
 
@@ -106,20 +106,20 @@ else
   # `--options runtime` (hardened runtime) is required by notarization.
   codesign --force --timestamp --options runtime \
     --sign "$APP_CERT" \
-    --identifier "com.coreupdate.deploy" \
-    "$PAYLOAD$INSTALL_DIR/macdeploy"
+    --identifier "com.macadt.deploy" \
+    "$PAYLOAD$INSTALL_DIR/macadt-deploy"
 
   codesign --force --timestamp --options runtime \
     --sign "$APP_CERT" \
-    --identifier "com.coreupdate.deploy.ui" \
-    "$PAYLOAD$INSTALL_DIR/macdeploy-ui"
+    --identifier "com.macadt.deploy.ui" \
+    "$PAYLOAD$INSTALL_DIR/macadt-deploy-ui"
 fi
 
 # ---------------------------------------------------------------------- package
 
 echo "== building the pkg =="
-COMPONENT="$BUILD_DIR/macdeploy-component.pkg"
-DISTRIBUTION="$BUILD_DIR/macdeploy-$VERSION.pkg"
+COMPONENT="$BUILD_DIR/macadt-deploy-component.pkg"
+DISTRIBUTION="$BUILD_DIR/macadt-deploy-$VERSION.pkg"
 
 pkgbuild \
   --root "$PAYLOAD" \
@@ -140,7 +140,7 @@ fi
 if [ "$NOTARIZE" -eq 1 ]; then
   echo "== notarization =="
   # Profile to create once:
-  #   xcrun notarytool store-credentials coreupdate-notary \
+  #   xcrun notarytool store-credentials macadt-notary \
   #     --key AuthKey_XXXX.p8 --key-id KEYID --issuer ISSUER-UUID
   xcrun notarytool submit "$DISTRIBUTION" \
     --keychain-profile "$KEYCHAIN_PROFILE" --wait
@@ -154,5 +154,5 @@ echo
 echo "NEXT STEPS"
 echo "  1. Deploy swiftDialog (dependency) on the fleet."
 echo "  2. Deploy this pkg."
-echo "  3. Verify: /usr/local/coreupdate/macdeploy --version"
-echo "  4. Dry-run: macdeploy pre -m <manifest> --dry-run"
+echo "  3. Verify: /usr/local/macadt/macadt-deploy --version"
+echo "  4. Dry-run: macadt-deploy pre -m <manifest> --dry-run"

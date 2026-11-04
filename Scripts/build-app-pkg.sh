@@ -5,8 +5,8 @@
 # vendor's payload. NO dependency to install on the device.
 #
 #   staging/
-#   |- usr/local/coreupdate/{macdeploy,macdeploy-ui,Dialog.app}
-#   \- Library/Application Support/CoreUpdate/Deploy/manifests/<packageKey>/
+#   |- usr/local/macadt/{macadt-deploy,macadt-deploy-ui,Dialog.app}
+#   \- Library/Application Support/MacADT/Deploy/manifests/<packageKey>/
 #      |- manifest.json
 #      |- hooks/            (if the manifest declares any)
 #      \- payload/<vendor file>
@@ -38,8 +38,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 TEAM_ID="${MDT_TEAM_ID:-TEAMID_TO_REPLACE}"
 PKG_CERT="${MDT_PKG_CERT:-Developer ID Installer: Galeax ($TEAM_ID)}"
-AGENT_DIR="/usr/local/coreupdate"
-MANIFEST_ROOT="/Library/Application Support/CoreUpdate/Deploy/manifests"
+AGENT_DIR="/usr/local/macadt"
+MANIFEST_ROOT="/Library/Application Support/MacADT/Deploy/manifests"
 # swiftDialog installs as a bundle; /usr/local/bin/dialog is just a link to it.
 # We therefore embed the whole .app, which keeps its signature/notarization.
 DIALOG_APP_SRC="${MDT_DIALOG_APP:-/Library/Application Support/Dialog/Dialog.app}"
@@ -94,7 +94,7 @@ PAYLOAD_REL="$(field payload.file)" \
 [ -n "$PAYLOAD_REL" ] || { echo "empty payload.file" >&2; exit 2; }
 
 # The same confinement the agent applies at runtime: refuse here rather than
-# build a pkg that macdeploy will reject on the device.
+# build a pkg that macadt-deploy will reject on the device.
 case "$PAYLOAD_REL" in
   /*|*..*) echo "payload.file must be relative and without '..': $PAYLOAD_REL" >&2; exit 2 ;;
 esac
@@ -151,7 +151,7 @@ FINAL_PKG="$OUT_DIR/$PACKAGE_KEY/$PACKAGE_KEY.pkg"
 # One identifier per application, otherwise two wrappers would each take the
 # other for an update of itself.
 pkgbuild --root "$STAGING" \
-         --identifier "com.coreupdate.deploy.app.$PACKAGE_KEY" \
+         --identifier "com.macadt.deploy.app.$PACKAGE_KEY" \
          --version "$VERSION" \
          --install-location / \
          --ownership recommended \

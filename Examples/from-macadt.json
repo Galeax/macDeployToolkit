@@ -1,0 +1,37 @@
+{
+  "_commentaire": [
+    "This manifest is a macadt_config.json from the Veille project, taken as-is.",
+    "The only addition: packageKey, which carries the deferral counter and is never",
+    "derived from AppName — an automatic derivation would mean that a display",
+    "rename would hand back their deferrals to every user in the fleet.",
+    "",
+    "PascalCase keys and PSADT names are accepted as-is:",
+    "  AppName, AppVersion, AppVendor, LogName, ProcessesToClose,",
+    "  IgnoreExitCodes, DeploymentType, DeployMode,",
+    "  AllowDefer, DeferTimes, DeferDays, ForceCountdown, PersistPrompt.",
+    "",
+    "Note: 7zFM is a PROCESS name, not a bundle ID. SIGKILL by PID targets it",
+    "via the executable name; declaring a bundleIdentifier is still preferable",
+    "for more reliable targeting."
+  ],
+
+  "packageKey": "7-Zip",
+
+  "AppName": "7-Zip",
+  "AppVersion": "25.01",
+  "AppVendor": "Igor Pavlov",
+  "LogName": "7-Zip_25.01.log",
+
+  "DeploymentType": "Install",
+  "DeployMode": "Interactive",
+
+  "ProcessesToClose": ["7zFM"],
+  "IgnoreExitCodes": [3010, 1641],
+
+  "deferral": {
+    "AllowDefer": true,
+    "DeferTimes": 3,
+    "ForceCountdown": 300,
+    "PersistPrompt": 60
+  }
+}

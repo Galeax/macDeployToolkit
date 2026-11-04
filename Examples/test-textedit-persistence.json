@@ -20,8 +20,8 @@
     "",
     "Usage:",
     "  open -a TextEdit",
-    "  sudo .build/debug/macdeploy pre -m Examples/test-textedit-persistence.json \\",
-    "       --state /tmp/macdeploy-persist-state --log /tmp/macdeploy-persist.log -v"
+    "  sudo .build/debug/macadt-deploy pre -m Examples/test-textedit-persistence.json \\",
+    "       --state /tmp/macadt-deploy-persist-state --log /tmp/macadt-deploy-persist.log -v"
   ],
 
   "packageKey": "test-textedit-persistence",

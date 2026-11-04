@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-echo "post-installation of ${COREUPDATE_APP_NAME} ${COREUPDATE_APP_VERSION}"
+echo "post-installation of ${MACADT_APP_NAME} ${MACADT_APP_VERSION}"
 
 # Example: drop a system-wide configuration.
 CONFIG_DIR="/Library/Application Support/BusinessTool"
@@ -25,8 +25,8 @@ cat > "$CONFIG_DIR/managed.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>ServerURL</key>
-  <string>https://businesstool.coreupdate.com</string>
-  <key>ManagedByCoreUpdate</key>
+  <string>https://businesstool.macadt.com</string>
+  <key>ManagedByMacADT</key>
   <true/>
 </dict>
 </plist>
@@ -36,7 +36,7 @@ chmod 644 "$CONFIG_DIR/managed.plist"
 
 # Example: load a LaunchDaemon shipped by the package. `bootout` first, otherwise
 # `bootstrap` fails on a service already loaded by a previous version.
-LABEL="com.coreupdate.businesstool.helper"
+LABEL="com.macadt.businesstool.helper"
 PLIST_PATH="/Library/LaunchDaemons/${LABEL}.plist"
 if [ -f "$PLIST_PATH" ]; then
   launchctl bootout "system/${LABEL}" 2>/dev/null || true

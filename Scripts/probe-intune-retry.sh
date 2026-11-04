@@ -9,7 +9,7 @@
 #   if script fails" setting and a frequency, the second is governed by the
 #   application install retry logic.
 #
-#   macdeploy's deferral strategy depends on the SECOND. To measure it, use
+#   macadt-deploy's deferral strategy depends on the SECOND. To measure it, use
 #   `probe-app-postinstall-retry.sh`.
 #
 # This probe keeps its usefulness: it measures the FALLBACK PATH. If the retry
@@ -24,17 +24,17 @@
 #     - Max number of times to retry if script fails : 3
 #
 # READING THE RESULT, after 24 h:
-#   cat /var/log/coreupdate-probe/retry.log
+#   cat /var/log/macadt-probe/retry.log
 #
 # Each line = one invocation. The gaps between timestamps give the real cadence;
 # the lines stopping give the give-up point.
 
 set -u
 
-PROBE_DIR="/var/log/coreupdate-probe"
+PROBE_DIR="/var/log/macadt-probe"
 mkdir -p "$PROBE_DIR"
 LOGFILE="$PROBE_DIR/retry.log"
-COUNTER="/var/log/coreupdate-probe/retry.count"
+COUNTER="/var/log/macadt-probe/retry.count"
 
 COUNT=0
 [ -f "$COUNTER" ] && COUNT=$(cat "$COUNTER" 2>/dev/null || echo 0)
@@ -45,5 +45,5 @@ echo "invocation=${COUNT} at=$(date -u +%Y-%m-%dT%H:%M:%SZ) exit=60" >> "$LOGFIL
 logger -s "MDT-PROBE-RETRY invocation=${COUNT}" 2>/dev/null
 
 # 60 = our "user deferral" code. We exit non-zero to reproduce exactly what
-# macdeploy will do on a deferral.
+# macadt-deploy will do on a deferral.
 exit 60

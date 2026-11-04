@@ -18,7 +18,7 @@
   "publisher": "Galeax",
 
   "blockingApps": [
-    { "bundleIdentifier": "com.coreupdate.businesstool", "displayName": "Business Tool" }
+    { "bundleIdentifier": "com.macadt.businesstool", "displayName": "Business Tool" }
   ],
 
   "deferral": {

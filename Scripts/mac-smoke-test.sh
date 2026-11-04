@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# macdeploy validation runbook on a Mac.
+# macadt-deploy validation runbook on a Mac.
 #
 # Chains everything that can be automated, then prints the steps that
 # necessarily require a human eye — a dialog that shows up cannot be verified in
@@ -37,10 +37,10 @@ for arg in "$@"; do
 done
 
 # A DIRECTORY, since each deployment has its own state file.
-STATE="/tmp/macdeploy-test-state"
-LOG="/tmp/macdeploy-test.log"
-AGENT=".build/debug/macdeploy"
-HELPER=".build/debug/macdeploy-ui"
+STATE="/tmp/macadt-deploy-test-state"
+LOG="/tmp/macadt-deploy-test.log"
+AGENT=".build/debug/macadt-deploy"
+HELPER=".build/debug/macadt-deploy-ui"
 MANIFEST="Examples/test-textedit.json"
 
 PASS=0
@@ -82,18 +82,18 @@ fi
 # ------------------------------------------------------- phase 0: compilation
 
 say "Phase 0 — compilation (THE real gate)"
-note "MDTMac (~2800 lines, 12 files) has never seen a compiler."
+note "MacADTMac (~2800 lines, 12 files) has never seen a compiler."
 note "Errors here are expected, not alarming. Fix then re-run."
 
-if swift build 2>&1 | tee /tmp/macdeploy-build.log | tail -30; then
-  if grep -q "error:" /tmp/macdeploy-build.log; then
-    bad "compilation errors — see /tmp/macdeploy-build.log"
+if swift build 2>&1 | tee /tmp/macadt-deploy-build.log | tail -30; then
+  if grep -q "error:" /tmp/macadt-deploy-build.log; then
+    bad "compilation errors — see /tmp/macadt-deploy-build.log"
     note "everything below depends on this phase: stop here."
     exit 1
   fi
   ok "swift build"
 else
-  bad "swift build failed — see /tmp/macdeploy-build.log"
+  bad "swift build failed — see /tmp/macadt-deploy-build.log"
   exit 1
 fi
 
@@ -102,10 +102,10 @@ note "253 unit tests. They should be green on macOS."
 # We judge on the exit code, not on a pattern in the output: on macOS, SwiftPM
 # also runs swift-testing (zero tests here) and its summary takes the last
 # lines, which used to make a grep "0 failures" return a false failure.
-if swift test > /tmp/macdeploy-test-suite.log 2>&1; then
+if swift test > /tmp/macadt-deploy-test-suite.log 2>&1; then
   ok "swift test"
-  grep -E "Executed [0-9]+ tests" /tmp/macdeploy-test-suite.log | tail -1 | sed 's/^/       /'
-elif grep -q "no such module 'XCTest'" /tmp/macdeploy-test-suite.log; then
+  grep -E "Executed [0-9]+ tests" /tmp/macadt-deploy-test-suite.log | tail -1 | sed 's/^/       /'
+elif grep -q "no such module 'XCTest'" /tmp/macadt-deploy-test-suite.log; then
   # XCTest ships only with the full Xcode, never with the Command Line Tools
   # alone. It is a missing capability, not a failing test. What running on macOS
   # would add is the detection of divergences between swift-corelibs Foundation
@@ -117,8 +117,8 @@ elif grep -q "no such module 'XCTest'" /tmp/macdeploy-test-suite.log; then
   note "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
 else
   bad "the test suite failed on macOS"
-  note "full detail in /tmp/macdeploy-test-suite.log:"
-  grep -E "error:|XCTAssert|failed \\(" /tmp/macdeploy-test-suite.log | head -10 | sed 's/^/       /'
+  note "full detail in /tmp/macadt-deploy-test-suite.log:"
+  grep -E "error:|XCTAssert|failed \\(" /tmp/macadt-deploy-test-suite.log | head -10 | sed 's/^/       /'
 fi
 
 # ---------------------------------------------------- phase 1: dry-run without root
@@ -152,7 +152,7 @@ else
 fi
 
 for cmd in version help; do
-  if "$AGENT" "$cmd" >/dev/null 2>&1; then ok "macdeploy $cmd"; else bad "macdeploy $cmd"; fi
+  if "$AGENT" "$cmd" >/dev/null 2>&1; then ok "macadt-deploy $cmd"; else bad "macadt-deploy $cmd"; fi
 done
 
 # ------------------------------------------------- phase 3: real detection
@@ -194,9 +194,9 @@ A dialog that shows up cannot be verified in a script.
 PHASE 3 — the dialog, the deferral, the close   (root, swiftDialog required)
 
   open -a TextEdit
-  rm -rf /tmp/macdeploy-test-state
-  sudo .build/debug/macdeploy pre -m Examples/test-textedit.json \
-       --state /tmp/macdeploy-test-state --log /tmp/macdeploy-test.log -v
+  rm -rf /tmp/macadt-deploy-test-state
+  sudo .build/debug/macadt-deploy pre -m Examples/test-textedit.json \
+       --state /tmp/macadt-deploy-test-state --log /tmp/macadt-deploy-test.log -v
 
   Expected, in order:
    1. a foreground dialog, two buttons, "Defer (2 left)"
@@ -211,9 +211,9 @@ PHASE 3 — the dialog, the deferral, the close   (root, swiftDialog required)
    7. exit code 0
 
   Check the state between each run:
-    .build/debug/macdeploy status --state /tmp/macdeploy-test-state --json
-    plutil -p /tmp/macdeploy-test-state/test-textedit.plist
-    tail -20 /tmp/macdeploy-test.log
+    .build/debug/macadt-deploy status --state /tmp/macadt-deploy-test-state --json
+    plutil -p /tmp/macadt-deploy-test-state/test-textedit.plist
+    tail -20 /tmp/macadt-deploy-test.log
 
 PHASE 4 — installation of a real DMG   (root, writes to /Applications)
 
@@ -223,7 +223,7 @@ PHASE 4 — installation of a real DMG   (root, writes to /Applications)
   Download a DMG (Chrome for example), then:
 
     KEY=test-chrome
-    DIR="/Library/Application Support/CoreUpdate/Deploy/manifests/$KEY"
+    DIR="/Library/Application Support/MacADT/Deploy/manifests/$KEY"
     sudo mkdir -p "$DIR/payload"
     sudo cp ~/Downloads/googlechrome.dmg "$DIR/payload/chrome.dmg"
     sudo tee "$DIR/manifest.json" >/dev/null <<'JSON'
@@ -236,7 +236,7 @@ PHASE 4 — installation of a real DMG   (root, writes to /Applications)
     }
 JSON
     sudo chown -R root:wheel "$DIR"
-    sudo .build/debug/macdeploy install -m "$DIR/manifest.json" -v
+    sudo .build/debug/macadt-deploy install -m "$DIR/manifest.json" -v
 
   Then check:
     ls -la@ /Applications/Google\ Chrome.app        # no more quarantine attribute
@@ -250,8 +250,8 @@ JSON
 PHASE 5 — the installation package   (optional, writes to /usr/local)
 
     Scripts/build-pkg.sh --unsigned
-    sudo installer -pkg .build/package/macdeploy-*.pkg -target /
-    /usr/local/coreupdate/macdeploy --version
+    sudo installer -pkg .build/package/macadt-deploy-*.pkg -target /
+    /usr/local/macadt/macadt-deploy --version
 
   The unsigned pkg installs via 'installer' but Intune would refuse it as a
   macOSPkgApp: that is the only thing the certificate unlocks here.

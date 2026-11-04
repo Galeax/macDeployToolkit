@@ -48,7 +48,7 @@
 # READING, after 24 to 48 h
 #
 #   On the device:
-#     cat /var/log/coreupdate-probe/app-postinstall-retry.log
+#     cat /var/log/macadt-probe/app-postinstall-retry.log
 #
 #   In Intune, on this device: the application's state across the attempts.
 #   That is the only source for question 3.
@@ -65,7 +65,7 @@
 
 set -u
 
-PROBE_DIR="/var/log/coreupdate-probe"
+PROBE_DIR="/var/log/macadt-probe"
 LOGFILE="${PROBE_DIR}/app-postinstall-retry.log"
 COUNTER="${PROBE_DIR}/app-postinstall-retry.count"
 
@@ -73,7 +73,7 @@ COUNTER="${PROBE_DIR}/app-postinstall-retry.count"
 # than land exactly on the limit and wrongly conclude all is well.
 FAILURES_BEFORE_SUCCESS=4
 
-# 60 = the code macdeploy returns on a user deferral. We reproduce exactly what
+# 60 = the code macadt-deploy returns on a user deferral. We reproduce exactly what
 # Intune will see in production.
 DEFER_EXIT_CODE=60
 

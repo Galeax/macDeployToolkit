@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Universal build of the macdeploy binaries, shared by build-pkg.sh and
+# Universal build of the macadt-deploy binaries, shared by build-pkg.sh and
 # build-app-pkg.sh.
 #
 # This file exists for a single reason: both scripts produce pkgs destined for
@@ -13,7 +13,7 @@
 # to launch on the oldest devices in the fleet.
 MDT_ARM_TRIPLE="arm64-apple-macosx13.0"
 MDT_X86_TRIPLE="x86_64-apple-macosx13.0"
-MDT_TOOLS="macdeploy macdeploy-ui"
+MDT_TOOLS="macadt-deploy macadt-deploy-ui"
 
 # Builds both binaries as universal and drops them into the given directory.
 #
@@ -63,7 +63,7 @@ mdt_build_universal() {
   fi
 
   mdt_verify_universal "$dest" || return 1
-  chmod 755 "$dest"/macdeploy "$dest"/macdeploy-ui || return 1
+  chmod 755 "$dest"/macadt-deploy "$dest"/macadt-deploy-ui || return 1
 }
 
 # Verification, not trust: both routes can produce a single-architecture binary

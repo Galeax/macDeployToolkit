@@ -17,13 +17,13 @@
 #
 # READING THE RESULT, on the test Mac:
 #   log show --predicate 'eventMessage CONTAINS "MDT-PROBE-TIMEOUT"' --last 2h
-#   cat /var/log/coreupdate-probe/timeout.log
+#   cat /var/log/macadt-probe/timeout.log
 #
 # The last value written before the stop gives the real timeout to the minute.
 
 set -u
 
-PROBE_DIR="/var/log/coreupdate-probe"
+PROBE_DIR="/var/log/macadt-probe"
 mkdir -p "$PROBE_DIR"
 LOGFILE="$PROBE_DIR/timeout.log"
 MAX_SECONDS=5400   # 90 min: beyond that, it is no longer a relevant question

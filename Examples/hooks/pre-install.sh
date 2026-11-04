@@ -11,14 +11,14 @@
 #   - killed after 600 s
 #
 # ENVIRONMENT VARIABLES PROVIDED
-#   COREUPDATE_PACKAGE_KEY    stable deployment key
-#   COREUPDATE_APP_NAME       display name
-#   COREUPDATE_APP_VERSION    target version
-#   COREUPDATE_ACTION         install | uninstall | repair
-#   COREUPDATE_PHASE          preInstall | postInstall | preUninstall | postUninstall
-#   COREUPDATE_MANIFEST_DIR   manifest directory
-#   COREUPDATE_BUNDLE_PATH    bundle path (if `detection.bundlePath` is declared)
-#   COREUPDATE_LOG            agent log
+#   MACADT_PACKAGE_KEY    stable deployment key
+#   MACADT_APP_NAME       display name
+#   MACADT_APP_VERSION    target version
+#   MACADT_ACTION         install | uninstall | repair
+#   MACADT_PHASE          preInstall | postInstall | preUninstall | postUninstall
+#   MACADT_MANIFEST_DIR   manifest directory
+#   MACADT_BUNDLE_PATH    bundle path (if `detection.bundlePath` is declared)
+#   MACADT_LOG            agent log
 #
 # EXIT CODES
 #   0        continue
@@ -30,7 +30,7 @@
 
 set -euo pipefail
 
-echo "phase ${COREUPDATE_PHASE} for ${COREUPDATE_APP_NAME} ${COREUPDATE_APP_VERSION}"
+echo "phase ${MACADT_PHASE} for ${MACADT_APP_NAME} ${MACADT_APP_VERSION}"
 
 # Real example: clean up an old installation in a different path that the
 # installer will not replace. This is the 7-Zip case from the Veille catalog,
@@ -43,6 +43,6 @@ fi
 
 # Example: disable an automatic update that would conflict with the managed
 # deployment.
-defaults write /Library/Preferences/com.coreupdate.businesstool AutoUpdate -bool false 2>/dev/null || true
+defaults write /Library/Preferences/com.macadt.businesstool AutoUpdate -bool false 2>/dev/null || true
 
 exit 0
