@@ -1,0 +1,46 @@
+{
+  "_commentaire": [
+    "Per-application escape hatches. Paths are relative to the manifest's",
+    "directory and CANNOT escape it: a `..` or an absolute path outside the",
+    "directory is rejected. A hook script read from JSON and executed as root is",
+    "an arbitrary-code-execution primitive, hence four safeguards:",
+    "  1. confinement within the manifest's directory",
+    "  2. existence and execute bit",
+    "  3. root owner",
+    "  4. not writable by group or others",
+    "",
+    "Prepare a hook:  chown root:wheel hooks/pre-install.sh && chmod 755 hooks/pre-install.sh"
+  ],
+
+  "packageKey": "business-tool-2026q3",
+  "displayName": "Business Tool",
+  "version": "3.2.0",
+  "publisher": "Galeax",
+
+  "blockingApps": [
+    { "bundleIdentifier": "com.macadt.businesstool", "displayName": "Business Tool" }
+  ],
+
+  "deferral": {
+    "maxDeferrals": 2,
+    "countdownSeconds": 300,
+    "persistPromptSeconds": 60
+  },
+
+  "detection": {
+    "bundlePath": "/Applications/Business Tool.app",
+    "expectedVersion": "3.2.0"
+  },
+
+  "hooks": {
+    "preInstall": "hooks/pre-install.sh",
+    "postInstall": "hooks/post-install.sh"
+  },
+
+  "ignoredExitCodes": [42],
+
+  "uninstall": {
+    "paths": ["/Applications/Business Tool.app"],
+    "preservedPaths": ["~/Library/Application Support/BusinessTool/license.plist"]
+  }
+}

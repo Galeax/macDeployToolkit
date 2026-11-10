@@ -1,0 +1,64 @@
+{
+  "_commentaire": [
+    "Manifest de TEST pour un déploiement Chrome de bout en bout sur le Mac.",
+    "Au plus proche de la prod (chrome-dmg-wrapper.json), à deux choses près :",
+    "",
+    "  - délais courts : countdown 60 s, persist 20 s, 2 reports, au lieu des",
+    "    valeurs de prod (300 / 60 / 3), pour ne pas attendre devant le dialogue.",
+    "  - packageKey dédié `chrome-test` : porte son propre compteur de reports,",
+    "    isolé de la prod.",
+    "",
+    "Le bloc `detection` ci-dessous NE court-circuite PAS l'install dans ce modèle :",
+    "le post-install appelle `macadt-deploy install`, qui joue le gate puis copie",
+    "le payload sans consulter la détection (seule la commande `pre` de l'ancien",
+    "modèle agent-partagé court-circuite sur detection). La détection reste utile",
+    "comme reflet de ce qu'Intune déclare en \"Included apps\".",
+    "",
+    "Le DMG voyage comme un fichier opaque dans payload/ ; seul le Mac a besoin",
+    "de hdiutil. Build : Scripts/build-app-pkg.sh -m Examples/chrome-test.json",
+    "-p ~/Downloads/googlechrome.dmg --mode Interactive --unsigned"
+  ],
+
+  "packageKey": "chrome-test",
+  "displayName": "Google Chrome (test macADT)",
+  "version": "157.0.8103.39",
+  "publisher": "Google LLC",
+  "mode": "interactive",
+  "icon": "SF=arrow.down.circle",
+
+  "blockingApps": [
+    { "bundleIdentifier": "com.google.Chrome", "displayName": "Google Chrome" }
+  ],
+
+  "deferral": {
+    "allowDeferral": true,
+    "maxDeferrals": 2,
+    "countdownSeconds": 60,
+    "persistPromptSeconds": 20,
+    "maxDialogSeconds": 120,
+    "forceCloseWhenExhausted": true
+  },
+
+  "payload": {
+    "file": "payload/GoogleChrome.dmg",
+    "installLocation": "/Applications"
+  },
+
+  "detection": {
+    "bundlePath": "/Applications/Google Chrome.app",
+    "expectedVersion": "157.0.8103.39"
+  },
+
+  "uninstall": {
+    "paths": [
+      "/Applications/Google Chrome.app",
+      "~/Library/Caches/Google/Chrome",
+      "~/Library/Application Support/Google/Chrome"
+    ],
+    "preservedPaths": [
+      "~/Library/Application Support/Google/Chrome/Default"
+    ]
+  },
+
+  "restartAction": "none"
+}

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+
+  "packageKey": "chrome-cve-2026-1234",
+  "displayName": "Google Chrome (security patch)",
+  "version": "141.0.7390.55",
+  "mode": "interactive",
+
+  "blockingApps": [
+    { "bundleIdentifier": "com.google.Chrome", "displayName": "Google Chrome" }
+  ],
+
+  "deferral": {
+    "allowDeferral": true,
+    "maxDeferrals": 1,
+    "deadline": "2026-08-07T12:00:00Z",
+    "countdownSeconds": 300,
+    "forceCloseWhenExhausted": true
+  },
+
+  "requirements": {
+    "respectPresentationMode": true,
+    "respectScreenLock": false
+  },
+
+  "detection": {
+    "bundlePath": "/Applications/Google Chrome.app",
+    "expectedVersion": "141.0.7390.55"
+  },
+
+  "messages": {
+    "strings": {
+      "fr": {
+        "title": "Correctif de sécurité obligatoire",
+        "closeAppsBody": "Un correctif de sécurité critique doit être appliqué à **{name}**.\n\nFermez :\n\n{apps}\n\nDate limite : {deadline}",
+        "deferButton": "Reporter une fois ({deferrals} restant)",
+        "closeButton": "Fermer et appliquer maintenant",
+        "finalWarningBody": "**{name}** va être fermé dans quelques minutes pour appliquer un correctif de sécurité critique.\n\n{apps}\n\nEnregistrez votre travail immédiatement.",
+        "progressTitle": "Application du correctif {name}",
+        "restartBody": "Le correctif de sécurité pour **{name}** est appliqué. Redémarrez dès que possible."
+      }
+    }
+  },
+
+  "restartAction": "none"
+}

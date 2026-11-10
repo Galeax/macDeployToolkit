@@ -1,0 +1,12 @@
+# SwiftPM build artifacts
+.build/
+
+# Packages and staging trees produced by Scripts/build-pkg.sh and
+# Scripts/build-app-pkg.sh. They contain vendor payloads (DMGs of several
+# hundred MB) that have no business in the repository.
+.build/package/
+.build/apps/
+
+# Local tooling
+.ruff_cache/
+.DS_Store

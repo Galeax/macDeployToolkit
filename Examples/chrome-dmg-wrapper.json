@@ -1,0 +1,58 @@
+{
+  "_commentaire": [
+    "Wrapper model: Intune does NOT deploy the vendor's DMG, it deploys our pkg",
+    "which contains it. This is the exact transposition of what PSADT does on the",
+    "Windows side, where Intune runs MacADT_installer.exe and not 7z2501-x64.exe.",
+    "",
+    "The app therefore becomes a #microsoft.graph.macOSPkgApp, which unlocks the",
+    "preInstallScript / postInstallScript — inaccessible to the macOSDmgApp type",
+    "",
+    "Sequence on the device:",
+    "  1. preInstallScript  -> macadt-deploy pre     : dialog, deferral, close",
+    "  2. installer         -> drops payload/GoogleChrome.dmg into staging",
+    "  3. postInstallScript -> macadt-deploy post    : mounts, copies, hardens, detects",
+    "",
+    "The DMG is never mounted on the build host: it travels as an opaque file in",
+    "the payload. Only the device needs hdiutil."
+  ],
+
+  "packageKey": "chrome-2026q3",
+  "displayName": "Google Chrome",
+  "version": "141.0.7390.55",
+  "publisher": "Google LLC",
+
+  "blockingApps": [
+    { "bundleIdentifier": "com.google.Chrome", "displayName": "Google Chrome" }
+  ],
+
+  "deferral": {
+    "maxDeferrals": 3,
+    "deferralDays": 7,
+    "countdownSeconds": 300,
+    "persistPromptSeconds": 60,
+    "forceCloseWhenExhausted": true
+  },
+
+  "payload": {
+    "file": "payload/GoogleChrome.dmg",
+    "installLocation": "/Applications"
+  },
+
+  "detection": {
+    "bundlePath": "/Applications/Google Chrome.app",
+    "expectedVersion": "141.0.7390.55"
+  },
+
+  "uninstall": {
+    "paths": [
+      "/Applications/Google Chrome.app",
+      "~/Library/Caches/Google/Chrome",
+      "~/Library/Application Support/Google/Chrome"
+    ],
+    "preservedPaths": [
+      "~/Library/Application Support/Google/Chrome/Default"
+    ]
+  },
+
+  "restartAction": "none"
+}

@@ -1,0 +1,44 @@
+{
+  "_commentaire": [
+    "Variant of test-textedit.json to validate dialog PERSISTENCE, the only path",
+    "where it still survives.",
+    "",
+    "forceCloseWhenExhausted set to false: nothing closes without a click, so the",
+    "deferrable dialog carries no countdown. Persistence takes over instead — the",
+    "dialog is relaunched at a regular interval, its timer bar hidden via",
+    "--hidetimerbar, until the budget is exhausted.",
+    "",
+    "Very short delays to avoid waiting during the test:",
+    "  persistPromptSeconds 15  -> re-shown every 15 s",
+    "  maxDialogSeconds 60      -> four presentations, then abandoned",
+    "",
+    "Expected, without touching anything:",
+    "  - a dialog WITHOUT a countdown bar, two buttons",
+    "  - it reopens after 15 s, four times in all",
+    "  - after 60 s: outcome 'abandoned', one deferral consumed, code 60",
+    "  - TextEdit stays OPEN: nobody consented, nothing closes",
+    "",
+    "Usage:",
+    "  open -a TextEdit",
+    "  sudo .build/debug/macadt-deploy pre -m Examples/test-textedit-persistence.json \\",
+    "       --state /tmp/macadt-deploy-persist-state --log /tmp/macadt-deploy-persist.log -v"
+  ],
+
+  "packageKey": "test-textedit-persistence",
+  "displayName": "TextEdit (persistence test)",
+  "version": "1.0",
+  "publisher": "Galeax",
+  "mode": "interactive",
+
+  "blockingApps": [
+    { "bundleIdentifier": "com.apple.TextEdit", "displayName": "TextEdit" }
+  ],
+
+  "deferral": {
+    "allowDeferral": true,
+    "maxDeferrals": 2,
+    "persistPromptSeconds": 15,
+    "maxDialogSeconds": 60,
+    "forceCloseWhenExhausted": false
+  }
+}

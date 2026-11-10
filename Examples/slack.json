@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+
+  "packageKey": "slack-2026q3",
+  "displayName": "Slack",
+  "version": "4.36.140",
+  "action": "install",
+  "mode": "interactive",
+
+  "blockingApps": [
+    { "bundleIdentifier": "com.tinyspeck.slackmacgap", "displayName": "Slack" }
+  ],
+
+  "deferral": {
+    "allowDeferral": true,
+    "maxDeferrals": 3,
+    "deferralDays": 7,
+    "deadline": "2026-09-01T18:00:00Z",
+    "countdownSeconds": 600,
+    "forceCloseWhenExhausted": true
+  },
+
+  "requirements": {
+    "minimumFreeBytes": 2000000000,
+    "minimumOSVersion": "14.0",
+    "respectPresentationMode": true,
+    "respectScreenLock": true
+  },
+
+  "detection": {
+    "bundlePath": "/Applications/Slack.app",
+    "expectedVersion": "4.36.140",
+    "packageIdentifier": "com.tinyspeck.slackmacgap"
+  },
+
+  "uninstall": {
+    "packageIdentifiers": ["com.tinyspeck.slackmacgap"],
+    "paths": [
+      "/Applications/Slack.app",
+      "~/Library/Caches/com.tinyspeck.slackmacgap",
+      "~/Library/Application Support/Slack"
+    ],
+    "launchdLabels": [],
+    "preservedPaths": [
+      "~/Library/Application Support/Slack/storage"
+    ]
+  },
+
+  "restartAction": "none"
+}
