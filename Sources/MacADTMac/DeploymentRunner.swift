@@ -253,14 +253,21 @@ public struct DeploymentRunner {
     ///
     /// Any display failure is swallowed: a progress dialog that does not show must
     /// never make an installation fail.
-    private func withProgress<T>(_ manifest: Manifest, _ body: () -> T) -> T {
+    private func withProgress<T>(_ manifest: Manifest, _ body: (@escaping (Double) -> Void) -> T) -> T {
         guard manifest.mode.presentsNotifications,
               !options.dryRun,
-              SessionInspector.consoleUser() != nil
-        else { return body() }
+              let user = SessionInspector.consoleUser()
+        else { return body({ _ in }) }
+
+        // The dialog runs as the user and (re)creates this file itself; we only
+        // append to it — see `ProgressFeed` for why that is safe from root.
+        let commandFile = "/tmp/macadt-progress-\(UUID().uuidString).cmd"
+        let feed = ProgressFeed(path: commandFile, ownerUID: user.uid)
+        defer { feed.remove() }
 
         let language = options.language ?? SystemProbe.consoleUserLanguage()
-        let spec = DialogSpec.progress(manifest: manifest, languageCode: language)
+        let spec = DialogSpec.progress(
+            manifest: manifest, languageCode: language, commandFile: commandFile)
 
         var pid: Int32?
         if let response = try? sendToHelper(.showDetached(spec)),
@@ -275,7 +282,7 @@ public struct DeploymentRunner {
                 _ = try? sendToHelper(.dismissDetached(pid: pid))
             }
         }
-        return body()
+        return body({ fraction in feed.report(fraction) })
     }
 
     /// End-of-installation message, equivalent of PSADT's
@@ -430,18 +437,18 @@ public struct DeploymentRunner {
 
     // MARK: - install
 
+    /// `install` is `post` with a mandatory payload. It used to stop right after the
+    /// copy, which skipped everything `post` does next — and the standalone
+    /// post-install script only ever calls `install`. The bundle was therefore left
+    /// as copied from the vendor's disk image: still quarantined and owned by the
+    /// image's build user, so it would not open (error -47 on Chrome), with no
+    /// detection verdict, no post-install hook and no completion message.
     private func runInstall(_ manifest: Manifest) -> ExitCode {
-        var state = store.load(packageKey: manifest.packageKey)
-        let now = Date()
-
         guard manifest.payload != nil else {
             logger.error("install command with no `payload` block in the manifest")
             return .invalidManifest
         }
-        if let failure = installPayload(manifest, state: &state, now: now) {
-            return finish(failure, manifest: manifest, state: &state, now: now)
-        }
-        return finish(.success, manifest: manifest, state: &state, now: now)
+        return runPost(manifest)
     }
 
     /// Installs the declared payload, if one exists.
@@ -498,9 +505,11 @@ public struct DeploymentRunner {
 
         // The progress dialog surrounds only the installation itself: it must not
         // overlap with the gate dialogs above.
-        let failure: ExitCode? = withProgress(manifest) {
+        let failure: ExitCode? = withProgress(manifest) { progress in
             do {
-                try performInstall(payloadPath: payloadPath, payload: payload, manifest: manifest)
+                try performInstall(
+                    payloadPath: payloadPath, payload: payload, manifest: manifest,
+                    progress: progress)
                 return nil
             } catch {
                 logger.error("\(error)")
@@ -513,7 +522,8 @@ public struct DeploymentRunner {
     private func performInstall(
         payloadPath: String,
         payload: PayloadSpec,
-        manifest: Manifest
+        manifest: Manifest,
+        progress: @escaping (Double) -> Void = { _ in }
     ) throws {
 
         switch (payloadPath as NSString).pathExtension.lowercased() {
@@ -531,7 +541,8 @@ public struct DeploymentRunner {
                     _ = try Installer.copyApplication(
                         from: "\(image.mountPoint)/\(name)",
                         to: payload.installLocation,
-                        logger: logger)
+                        logger: logger,
+                        progress: progress)
                 case .package(let name):
                     try runPackageInstaller("\(image.mountPoint)/\(name)", manifest: manifest)
                 case .ambiguous(let candidates):
@@ -546,7 +557,8 @@ public struct DeploymentRunner {
 
         case "app":
             _ = try Installer.copyApplication(
-                from: payloadPath, to: payload.installLocation, logger: logger)
+                from: payloadPath, to: payload.installLocation, logger: logger,
+                progress: progress)
 
         case let other:
             throw InstallError.unsupportedPayload(extension: other)

@@ -441,9 +441,9 @@ public struct LocalizedStrings: Codable, Equatable, Sendable {
         finalWarningBody: String,
         progressTitle: String,
         restartBody: String,
-        completionBody: String = "L'installation de **{name}** est terminee.",
-        installNoticeBody: String = "**{name}** {version} va etre installe.",
-        countdownText: String = "Demarrage automatique dans {remaining}"
+        completionBody: String = "L'installation de **{name}** est terminée.",
+        installNoticeBody: String = "**{name}** {version} va être installé.",
+        countdownText: String = "Démarrage automatique dans {remaining}"
     ) {
         self.title = title
         self.closeAppsBody = closeAppsBody
@@ -518,16 +518,16 @@ public struct Messages: Codable, Equatable, Sendable {
 
     public static let builtIn: [String: LocalizedStrings] = [
         "fr": LocalizedStrings(
-            title: "Mise a jour logicielle",
-            closeAppsBody: "L'installation de **{name}** necessite la fermeture de :\n\n{apps}\n\nEnregistrez votre travail avant de continuer.",
+            title: "Mise à jour logicielle",
+            closeAppsBody: "L'installation de **{name}** nécessite la fermeture de :\n\n{apps}\n\nEnregistrez votre travail avant de continuer.",
             deferButton: "Reporter ({deferrals} restants)",
             closeButton: "Fermer et installer",
-            finalWarningBody: "**{name}** doit etre installe maintenant. Les applications suivantes vont etre fermees :\n\n{apps}\n\nEnregistrez votre travail immediatement.",
+            finalWarningBody: "**{name}** doit être installé maintenant. Les applications suivantes vont être fermées :\n\n{apps}\n\nEnregistrez votre travail immédiatement.",
             progressTitle: "Installation de {name} en cours",
-            restartBody: "L'installation de **{name}** est terminee. Un redemarrage est necessaire.",
-            completionBody: "**{name}** {version} est installe.",
-            installNoticeBody: "**{name}** {version} va etre installe.",
-            countdownText: "Demarrage automatique dans {remaining}"
+            restartBody: "L'installation de **{name}** est terminée. Un redémarrage est nécessaire.",
+            completionBody: "**{name}** {version} est installé.",
+            installNoticeBody: "**{name}** {version} va être installé.",
+            countdownText: "Démarrage automatique dans {remaining}"
         ),
         "en": LocalizedStrings(
             title: "Software update",

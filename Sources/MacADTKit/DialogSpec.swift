@@ -52,6 +52,12 @@ public struct DialogSpec: Codable, Equatable, Sendable {
     /// re-renders every second. `nil` falls back to the bare time left.
     public var countdownText: String?
 
+    /// Command file of a progress dialog whose bar the agent advances. With it the
+    /// bar is a real 0–100 % gauge; without it, swiftDialog's indeterminate
+    /// animation — which is drawn grey on grey whenever the window is not the active
+    /// one, i.e. always during an installation, and reads as no bar at all.
+    public var progressCommandFile: String?
+
     public init(
         title: String,
         message: String,
@@ -64,7 +70,8 @@ public struct DialogSpec: Codable, Equatable, Sendable {
         isBlocking: Bool = false,
         blursScreen: Bool = false,
         isIndeterminateProgress: Bool = false,
-        countdownText: String? = nil
+        countdownText: String? = nil,
+        progressCommandFile: String? = nil
     ) {
         self.title = title
         self.message = message
@@ -78,6 +85,7 @@ public struct DialogSpec: Codable, Equatable, Sendable {
         self.blursScreen = blursScreen
         self.isIndeterminateProgress = isIndeterminateProgress
         self.countdownText = countdownText
+        self.progressCommandFile = progressCommandFile
     }
 
     /// Text under the countdown bar for a given time left: "45 s" under a minute,
@@ -141,9 +149,21 @@ public struct DialogSpec: Codable, Equatable, Sendable {
         if isIndeterminateProgress {
             // A tile in the bottom-right corner, same width as the gate dialog. No
             // `--small`: it scales `--width`/`--height` by 0.75 as well, which is what
-            // squeezed the earlier attempts.
-            arguments += ["--progress", "--button1disabled", "--moveable",
-                          "--position", "bottomright", "--width", "520", "--height", "200"]
+            // squeezed the earlier attempts. 250 pt, not less: title (50) + icon row
+            // (~85) + bar (20) + button row (~40) + paddings do not fit in 200, and
+            // SwiftUI then drops the bar — the window showed with no progress at all.
+            if let progressCommandFile {
+                arguments += ["--progress", "100", "--progresstext", "0 %",
+                              "--commandfile", progressCommandFile]
+            } else {
+                arguments.append("--progress")
+            }
+            arguments += ["--button1disabled", "--moveable",
+                          "--position", "bottomright", "--width", "520", "--height", "250",
+                          // The only dialog that asks nothing of the user: let them
+                          // send it to the Dock while the installation runs. It is
+                          // closed by the agent at the end either way.
+                          "--windowbuttons", "min"]
             if let iconPath { arguments += ["--icon", iconPath, "--iconsize", "64"] }
             else { arguments += ["--icon", "none"] }
             return arguments
@@ -189,11 +209,55 @@ public struct DialogSpec: Codable, Equatable, Sendable {
         return arguments
     }
 
+    /// Options that carry no value. Everything else in `arguments()` is a
+    /// `--key value` pair.
+    private static let booleanOptions: Set<String> = [
+        "button1disabled", "moveable", "blurscreen", "hidetimerbar",
+    ]
+
+    /// What is actually handed to swiftDialog: the same options as `arguments()`,
+    /// as ONE `--jsonstring` argument.
+    ///
+    /// Not a matter of taste. On swiftDialog 3.1.1 / macOS 26, the same options given
+    /// as separate arguments make the process hang before it creates its window,
+    /// depending on their ORDER — `--progress` ahead of `--position` or `--width`
+    /// is enough. That is why the installation-progress window never showed, and the
+    /// centred final warning would not have either. Measured on the test Mac with a
+    /// window-list probe: every failing order shows once passed as JSON, where there
+    /// is no order.
+    public func launchArguments(timerOverride: Int? = nil, commandFile: String? = nil) -> [String] {
+        let options = arguments(timerOverride: timerOverride, commandFile: commandFile)
+        var configuration: [String: Any] = [:]
+        var index = 0
+        while index < options.count {
+            let key = String(options[index].dropFirst(2))
+            let next = index + 1 < options.count ? options[index + 1] : nil
+            // `--progress` alone is the indeterminate bar; followed by a number it is
+            // the countdown.
+            let isFlag = DialogSpec.booleanOptions.contains(key)
+                || (key == "progress" && (next == nil || Int(next!) == nil))
+            if isFlag || next == nil {
+                configuration[key] = true
+                index += 1
+            } else {
+                configuration[key] = next
+                index += 2
+            }
+        }
+        guard let data = try? JSONSerialization.data(
+                withJSONObject: configuration, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return options
+        }
+        return ["--jsonstring", json]
+    }
+
     /// Progress dialog shown while the payload is installed.
     public static func progress(
         manifest: Manifest,
         languageCode: String,
-        iconPath: String? = nil
+        iconPath: String? = nil,
+        commandFile: String? = nil
     ) -> DialogSpec {
         let strings = manifest.messages.resolve(for: languageCode)
         let values = ["name": manifest.displayName, "version": manifest.version]
@@ -202,7 +266,8 @@ public struct DialogSpec: Codable, Equatable, Sendable {
             message: Template.render(strings.progressTitle, values: values),
             button1: "",
             iconPath: iconPath ?? manifest.icon,
-            isIndeterminateProgress: true)
+            isIndeterminateProgress: true,
+            progressCommandFile: commandFile)
     }
 
     /// Installation completion message, the equivalent of PSADT's

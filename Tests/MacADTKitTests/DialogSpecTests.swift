@@ -42,7 +42,7 @@ final class DialogSpecTests: XCTestCase {
 
     func testDeadlineFormatIsIndependentOfSystemLocale() {
         XCTAssertEqual(Template.formatDeadline(deadline, languageCode: "fr", timeZone: utc),
-                       "01/09/2026 a 18:00")
+                       "01/09/2026 à 18:00")
         XCTAssertEqual(Template.formatDeadline(deadline, languageCode: "en", timeZone: utc),
                        "2026-09-01 at 18:00")
     }
@@ -64,7 +64,7 @@ final class DialogSpecTests: XCTestCase {
         XCTAssertEqual(values["version"], "4.36.140")
         XCTAssertEqual(values["deferrals"], "2")
         XCTAssertEqual(values["apps"], "- Slack\n- Microsoft Teams")
-        XCTAssertEqual(values["deadline"], "01/09/2026 a 18:00")
+        XCTAssertEqual(values["deadline"], "01/09/2026 à 18:00")
     }
 
     // MARK: - Dialog construction
@@ -121,7 +121,7 @@ final class DialogSpecTests: XCTestCase {
         XCTAssertNil(spec.button2)
         XCTAssertEqual(spec.timerSeconds, 600)
         XCTAssertTrue(spec.isBlocking)
-        XCTAssertTrue(spec.message.contains("immediatement"),
+        XCTAssertTrue(spec.message.contains("immédiatement"),
                       "the final warning must use finalWarningBody")
     }
 
@@ -138,7 +138,7 @@ final class DialogSpecTests: XCTestCase {
 
         XCTAssertNil(spec.button2, "a notice offers no deferral")
         XCTAssertEqual(spec.timerSeconds, 600, "its countdown proceeds with the install")
-        XCTAssertTrue(spec.message.contains("va etre installe"),
+        XCTAssertTrue(spec.message.contains("va être installé"),
                       "the notice must use installNoticeBody")
         XCTAssertFalse(spec.message.contains("fermeture"),
                        "no closing language when there is nothing to close")
@@ -255,12 +255,12 @@ final class DialogSpecTests: XCTestCase {
     /// hard-wired beside the buttons.
     func testDrivenCountdownIsAProgressBarAboveTheButtons() {
         let spec = DialogSpec(title: "T", message: "M", button1: "OK", timerSeconds: 60,
-                              countdownText: "Demarrage automatique dans {remaining}")
+                              countdownText: "Démarrage automatique dans {remaining}")
         let arguments = spec.arguments(commandFile: "/tmp/x.cmd")
 
         XCTAssertFalse(arguments.contains("--timer"))
         XCTAssertEqual(arguments.firstIndex(of: "--progress").map { arguments[$0 + 1] }, "60")
-        XCTAssertTrue(arguments.contains("Demarrage automatique dans 1:00"))
+        XCTAssertTrue(arguments.contains("Démarrage automatique dans 1:00"))
         XCTAssertEqual(arguments.firstIndex(of: "--commandfile").map { arguments[$0 + 1] }, "/tmp/x.cmd")
     }
 
@@ -292,6 +292,67 @@ final class DialogSpecTests: XCTestCase {
         let long = DialogSpec(title: "T", message: "a\n\n- b\n\nc", button1: "OK", timerSeconds: 60)
         XCTAssertLessThan(short.compactHeight, long.compactHeight)
         XCTAssertLessThanOrEqual(long.compactHeight, 480)
+    }
+
+    // MARK: - Launch arguments
+
+    private func launchConfiguration(_ arguments: [String]) throws -> [String: Any] {
+        XCTAssertEqual(arguments.count, 2)
+        XCTAssertEqual(arguments.first, "--jsonstring")
+        let object = try JSONSerialization.jsonObject(with: Data(arguments[1].utf8))
+        return try XCTUnwrap(object as? [String: Any])
+    }
+
+    /// swiftDialog hangs without a window on some argument ORDERS, so everything goes
+    /// through a single `--jsonstring`.
+    func testLaunchArgumentsAreASingleJSONString() throws {
+        let spec = DialogSpec(title: "Mise à jour", message: "**A** va être installé.",
+                              button1: "OK", button2: "Reporter", iconPath: "SF=arrow.down.circle",
+                              timerSeconds: 60)
+        let configuration = try launchConfiguration(spec.launchArguments(commandFile: "/tmp/x.cmd"))
+
+        XCTAssertEqual(configuration["title"] as? String, "Mise à jour")
+        XCTAssertEqual(configuration["message"] as? String, "**A** va être installé.")
+        XCTAssertEqual(configuration["button2text"] as? String, "Reporter")
+        XCTAssertEqual(configuration["progress"] as? String, "60")
+        XCTAssertEqual(configuration["commandfile"] as? String, "/tmp/x.cmd")
+        XCTAssertEqual(configuration["position"] as? String, "bottomright")
+        XCTAssertEqual(configuration["moveable"] as? Bool, true)
+    }
+
+    func testIndeterminateProgressIsABooleanInJSON() throws {
+        let spec = DialogSpec.progress(manifest: manifest(), languageCode: "fr")
+        let configuration = try launchConfiguration(spec.launchArguments())
+
+        XCTAssertEqual(configuration["progress"] as? Bool, true)
+        XCTAssertEqual(configuration["button1disabled"] as? Bool, true)
+        XCTAssertEqual(configuration["button1text"] as? String, "")
+        XCTAssertEqual(configuration["width"] as? String, "520")
+        XCTAssertEqual(configuration["windowbuttons"] as? String, "min",
+                       "the progress window can be minimised")
+    }
+
+    /// With a command file the progress window carries a real 0–100 gauge the agent
+    /// advances, instead of the indeterminate animation.
+    func testProgressDialogWithCommandFileIsDeterminate() throws {
+        let spec = DialogSpec.progress(
+            manifest: manifest(), languageCode: "fr", commandFile: "/tmp/p.cmd")
+        let configuration = try launchConfiguration(spec.launchArguments())
+
+        XCTAssertEqual(configuration["progress"] as? String, "100")
+        XCTAssertEqual(configuration["progresstext"] as? String, "0 %")
+        XCTAssertEqual(configuration["commandfile"] as? String, "/tmp/p.cmd")
+        XCTAssertNil(configuration["timer"])
+    }
+
+    func testBlockingDialogKeepsItsFlagsInJSON() throws {
+        let spec = DialogSpec(title: "T", message: "M", button1: "OK",
+                              timerSeconds: 60, isBlocking: true)
+        let configuration = try launchConfiguration(spec.launchArguments(commandFile: "/tmp/x.cmd"))
+
+        XCTAssertEqual(configuration["blurscreen"] as? Bool, true)
+        XCTAssertEqual(configuration["quitkey"] as? String, "x")
+        XCTAssertEqual(configuration["position"] as? String, "center")
     }
 
     // MARK: - Progress dialog
@@ -351,12 +412,12 @@ final class DialogSpecTests: XCTestCase {
         {
           "packageKey": "x",
           "displayName": "Outil",
-          "messages": { "strings": { "fr": { "title": "Deploiement Galeax" } } }
+          "messages": { "strings": { "fr": { "title": "Déploiement Galeax" } } }
         }
         """.utf8))
         let strings = manifest.messages.resolve(for: "fr")
 
-        XCTAssertEqual(strings.title, "Deploiement Galeax")
+        XCTAssertEqual(strings.title, "Déploiement Galeax")
         XCTAssertFalse(strings.closeAppsBody.isEmpty, "non-overridden texts must survive")
         XCTAssertFalse(strings.completionBody.isEmpty)
         XCTAssertFalse(strings.progressTitle.isEmpty)

@@ -52,7 +52,7 @@ public enum DialogRunner {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: dialogPath)
-        process.arguments = spec.arguments()
+        process.arguments = spec.launchArguments()
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -146,7 +146,7 @@ public enum DialogRunner {
             let processTimeout = timer.map { TimeInterval($0) + 30 } ?? 3_600
             let startedAt = Date()
             let result = try ProcessRunner.run(
-                dialogPath, spec.arguments(timerOverride: timer, commandFile: commandFile),
+                dialogPath, spec.launchArguments(timerOverride: timer, commandFile: commandFile),
                 timeout: processTimeout)
             let expired = ticker?.cancel() ?? false
 

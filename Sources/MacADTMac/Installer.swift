@@ -81,7 +81,8 @@ public enum Installer {
         from source: String,
         to installLocation: String,
         logger: DeployLogging,
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        progress: ((Double) -> Void)? = nil
     ) throws -> String {
 
         let name = BundlePath.lastComponent(source)
@@ -101,8 +102,17 @@ public enum Installer {
         try? manager.removeItem(atPath: staged)
         try? manager.removeItem(atPath: previous)
 
+        // `ditto` says nothing while it works, so progress is the size of what has
+        // landed against the size of the source, sampled once a second.
+        let watcher = progress.map {
+            CopyProgressWatcher(source: source, destination: staged, report: $0)
+        }
+        watcher?.start()
+        defer { watcher?.stop() }
+
         let copy = try ProcessRunner.run(
             "/usr/bin/ditto", ["--rsrc", "--extattr", source, staged], timeout: 1_800)
+        watcher?.stop()
         guard copy.succeeded else {
             try? manager.removeItem(atPath: staged)
             throw InstallError.copyFailed(
@@ -124,6 +134,7 @@ public enum Installer {
         }
         if hadPrevious { try? manager.removeItem(atPath: previous) }
 
+        progress?(1)
         logger.notice("installed: \(destination)")
         return destination
     }
@@ -160,6 +171,14 @@ public enum Installer {
         _ = try? ProcessRunner.run(
             "/usr/bin/xattr", ["-dr", "com.apple.quarantine", bundlePath], timeout: 120)
 
+        // Files copied out of a mounted disk image carry a `com.apple.FinderInfo`
+        // attribute (seen on Chrome's DMG, macOS 26). It is not part of the
+        // signature, but `codesign --strict` rejects it as "detritus" — on the
+        // vendor's own image as much as on our copy — so the check below would cry
+        // wolf on every install. Same tolerance for an absent attribute.
+        _ = try? ProcessRunner.run(
+            "/usr/bin/xattr", ["-dr", "com.apple.FinderInfo", bundlePath], timeout: 120)
+
         if let signature = try? ProcessRunner.run(
             "/usr/bin/codesign", ["--verify", "--deep", "--strict", bundlePath], timeout: 300),
            !signature.succeeded {
@@ -184,6 +203,55 @@ public enum Installer {
         }
 
         return anomalies
+    }
+}
+
+/// Samples a copy in progress: bytes on disk at the destination over bytes at the
+/// source. Approximate — `du` counts allocated blocks — and capped below 100 %:
+/// only the caller knows when the copy is really over.
+private final class CopyProgressWatcher: @unchecked Sendable {
+
+    private let source: String
+    private let destination: String
+    private let report: (Double) -> Void
+    private let queue = DispatchQueue(label: "com.macadt.deploy.copy-progress")
+    private let lock = NSLock()
+    private var timer: DispatchSourceTimer?
+    private var total: Int64 = 0
+
+    init(source: String, destination: String, report: @escaping (Double) -> Void) {
+        self.source = source
+        self.destination = destination
+        self.report = report
+    }
+
+    func start() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: 1)
+        timer.setEventHandler { [weak self] in self?.sample() }
+        lock.lock(); self.timer = timer; lock.unlock()
+        timer.resume()
+    }
+
+    func stop() {
+        lock.lock(); defer { lock.unlock() }
+        timer?.cancel()
+        timer = nil
+    }
+
+    private func sample() {
+        if total == 0 { total = CopyProgressWatcher.kilobytes(at: source) }
+        guard total > 0 else { return }
+        let done = CopyProgressWatcher.kilobytes(at: destination)
+        lock.lock(); let running = timer != nil; lock.unlock()
+        if running { report(min(0.99, Double(done) / Double(total))) }
+    }
+
+    private static func kilobytes(at path: String) -> Int64 {
+        guard let result = try? ProcessRunner.run("/usr/bin/du", ["-sk", path], timeout: 60),
+              let field = result.standardOutput.split(whereSeparator: { $0 == "\t" || $0 == " " }).first
+        else { return 0 }
+        return Int64(field) ?? 0
     }
 }
 #endif

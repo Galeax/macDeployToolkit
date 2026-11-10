@@ -129,7 +129,7 @@ final class ManifestTests: XCTestCase {
           "messages": {
             "strings": {
               "fr": {
-                "title": "Deploiement Galeax",
+                "title": "Déploiement Galeax",
                 "closeAppsBody": "b", "deferButton": "c", "closeButton": "d",
                 "finalWarningBody": "e", "progressTitle": "f", "restartBody": "g"
               }
@@ -138,13 +138,13 @@ final class ManifestTests: XCTestCase {
         }
         """.utf8)
         let manifest = try Manifest.decode(json)
-        XCTAssertEqual(manifest.messages.resolve(for: "fr").title, "Deploiement Galeax")
+        XCTAssertEqual(manifest.messages.resolve(for: "fr").title, "Déploiement Galeax")
         XCTAssertEqual(manifest.messages.resolve(for: "en").title, "Software update")
     }
 
     func testResolveHandlesRegionalCodesAndUnknownLanguages() {
         let messages = Messages()
-        XCTAssertEqual(messages.resolve(for: "fr-FR").title, "Mise a jour logicielle")
+        XCTAssertEqual(messages.resolve(for: "fr-FR").title, "Mise à jour logicielle")
         XCTAssertEqual(messages.resolve(for: "de-DE").title, "Software update",
                        "an unknown language must fall back to English")
     }

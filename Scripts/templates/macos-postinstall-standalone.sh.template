@@ -93,6 +93,17 @@ cleanup() {
        return 0 ;;
   esac
 
+  # The completion message is a detached swiftDialog still on screen at this
+  # point (20 s timer). Deleting its bundle under it makes the window lose its
+  # background colour — it turns see-through (seen on macOS 26). So wait for our
+  # own copy to exit; bounded, so a stuck dialog never holds the script up.
+  waited=0
+  while [ "$waited" -lt 30 ] && pgrep -f "$DIALOG" >/dev/null 2>&1; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  pkill -f "$DIALOG" 2>/dev/null || true
+
   rm -rf "$MANIFEST_DIR"
   rm -rf "$AGENT_DIR/Dialog.app"
   rm -f "$AGENT_DIR/macadt-deploy" "$AGENT_DIR/macadt-deploy-ui"

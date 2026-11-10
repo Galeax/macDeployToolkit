@@ -83,7 +83,7 @@ In Intune ("macOS app (PKG)" type): upload the pkg, paste the **postInstallScrip
 | `messages.strings` | built-in FR + EN | Partial override accepted |
 | `restartAction` | — | `none` \| `recommendRestart` \| `requireRestart` \| `requireLogout` \| `requireShutdown` |
 
-Tokens in the texts: `{name}`, `{version}`, `{apps}`, `{deferrals}`, `{deadline}`. An unknown token is **left visible** rather than replaced with nothing.
+Tokens in the texts: `{name}`, `{version}`, `{apps}`, `{deferrals}`, `{deadline}`. An unknown token is **left visible** rather than replaced with nothing. The label under the countdown bar (`countdownText`, e.g. `"Démarrage automatique dans {remaining}"`) has its own token, `{remaining}`, re-rendered every second.
 
 #### The three deployment modes
 
@@ -95,6 +95,8 @@ The mode is chosen **per deployment** (`--mode`, which overrides the manifest). 
 | `nonInteractive` | **no** — no choice offered | yes | by force |
 | `silent` | no | **no** — nothing on screen | by force |
 
+With `showDialogWhenNotRunning` on (the default), `interactive` shows its gate — an install notice with the same deferral and countdown — even when no blocking application is running. Turn it off (`--show-when-not-running false`) and an `interactive` deployment installs straight away in that case. The other two modes never show a gate.
+
 The non-interactive modes respect the deferral window before closing: as long as neither `deadline`, nor `deferralDays`, nor `maxDeferrals` is reached, they return `64` and let Intune retry. To install without waiting, `allowDeferral: false`.
 
 #### Application detection and closing
@@ -104,6 +106,31 @@ macadt-deploy detects running blocking applications itself (libproc, agent side 
 - **No PPPC profile, no AppleEvent, no TCC.** Closing is a `kill(2)` by PID on the agent side, which depends on no session and requires no authorization.
 - The dialog (warning + deferral + countdown) is **the only window to save one's work**: on consent or at the deadline, the application is killed on the spot, with no "Save?" sheet.
 - `persistPromptSeconds` brings an ignored dialog back to the foreground; a deferrable dialog also carries its own countdown, whose expiry triggers the installation.
+
+#### The dialogs
+
+Four windows, all swiftDialog, all in the bottom-right corner except the final warning:
+
+| Window | When | What it carries |
+|---|---|---|
+| Gate | `interactive`, before installing | message, **Defer** / **Close and install**, a full-width countdown bar **above the buttons** with the time left |
+| Final warning | deferrals exhausted | same, centred, screen blurred, no deferral |
+| Installation in progress | `interactive` and `nonInteractive`, during the copy | a real 0–100 % bar; can be minimised to the Dock |
+| Completion | same modes, after a successful install | closes itself after 20 s |
+
+| Gate | Installation in progress | Completion |
+|---|---|---|
+| ![Gate dialog: install notice, countdown bar above the Defer and Close-and-install buttons](docs/images/dialog-gate.png) | ![Installation in progress: 33 % progress bar, minimise button](docs/images/dialog-progress.png) | ![Completion message with its self-dismiss timer and OK button](docs/images/dialog-completion.png) |
+
+<sub>macOS 26, French locale, `Examples/chrome-test.json`.</sub>
+
+Things that are not obvious, all established on swiftDialog 3.1.1 / macOS 26 and guarded by tests or comments:
+
+- **The countdown is driven by the helper, not by `--timer`.** swiftDialog draws its timer bar beside the buttons, and a timer whose bar is hidden never expires. The helper advances a `--progress` bar through the command file and closes the dialog itself at zero.
+- **swiftDialog is launched with a single `--jsonstring`.** Given as separate arguments, some orders (`--progress` ahead of `--position` or `--width`) leave the process running with no window at all.
+- **No `--ontop`, no `--small`.** The first shows no window through `launchctl asuser`; the second also scales `--width` / `--height` by 0.75 and truncates the buttons.
+- **The window height is computed from the message.** swiftDialog does not fit its window to the content.
+- **The progress percentage** is the size copied against the size of the source, sampled every second. A `.pkg` payload gives no usable progress: its bar stays at 0 % until the end.
 
 #### Intune deployment
 
@@ -118,13 +145,17 @@ Intune — "macOS app (PKG)" app, required
         ├─ process scan             (libproc)
         ├─ dialog + deferral        (launchctl asuser → macadt-deploy-ui → swiftDialog)
         ├─ SIGKILL close            (kill by PID, agent side)
-        ├─ DMG mount, .app copy, hardening, detection
-        ├─ cleanup (removes agent + swiftDialog + payload; keeps state + logs)
+        ├─ DMG mount, .app copy          (progress window)
+        ├─ hardening, detection, post-install hook, completion message
+        ├─ cleanup (waits for the completion message to close, then removes
+        │           agent + swiftDialog + payload; keeps state + logs)
         └─ RestartAction
 ```
 
 **What is frozen in the signed pkg** (decided at build, per app/version): the manifest and the payload.
-**What is dynamic at deployment** (text, regenerated by MacADT, no rebuild): the `--mode` and any pre/post scripts. Changing mode = regenerate the post-install, the pkg does not move.
+**What is dynamic at deployment** (text, regenerated by MacADT, no rebuild): the `--mode`, `--show-when-not-running` and any pre/post scripts. Changing either = regenerate (or edit) the post-install, the pkg does not move.
+
+`install` runs the whole chain: copy, then **hardening** (quarantine and Finder attributes removed, signature verified, `root:wheel`), the detection verdict, the post-install hook and the completion message. An application copied out of a DMG and left unhardened stays quarantined and owned by the image's build user — it does not open.
 
 The templates in `Scripts/templates/` are instantiated by substitution, exactly like `InstallExtractAndRun.ps1` and its `{##…##}` on the Windows side.
 
@@ -166,11 +197,13 @@ Intune only distinguishes 0 / non-zero. Two consequences:
 - **A user deferral shows up as "failed"** on the dashboard, functionally correct (will be retried), unreadable in reporting. The source of truth:
   ```bash
   macadt-deploy status --json
-  plutil -p "/Library/Application Support/MacADT/Deploy/state.plist"
+  plutil -p "/Library/Application Support/MacADT/Deploy/state/<packageKey>.plist"
   log show --predicate 'subsystem == "com.macadt.deploy"' --last 1d
   cat /var/log/MacADT/deploy.log            # global log (base dir overridable via MACADT_LOG_DIR)
   ```
 - **Codes 70–72 are translated to 0 by the post-install**, otherwise a successful installation requiring a restart would be reinstalled in a loop.
+
+The state directory survives the cleanup on purpose — a deferral that was counted stays counted. When testing the same package repeatedly, remove it between runs (`sudo rm -rf "/Library/Application Support/MacADT/Deploy/state"`), or the Defer button disappears once `maxDeferrals` is reached.
 
 #### The `--dry-run` mode
 

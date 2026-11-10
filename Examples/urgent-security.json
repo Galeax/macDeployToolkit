@@ -31,13 +31,13 @@
   "messages": {
     "strings": {
       "fr": {
-        "title": "Correctif de securite obligatoire",
-        "closeAppsBody": "Un correctif de securite critique doit etre applique a **{name}**.\n\nFermez :\n\n{apps}\n\nDate limite : {deadline}",
+        "title": "Correctif de sécurité obligatoire",
+        "closeAppsBody": "Un correctif de sécurité critique doit être appliqué à **{name}**.\n\nFermez :\n\n{apps}\n\nDate limite : {deadline}",
         "deferButton": "Reporter une fois ({deferrals} restant)",
         "closeButton": "Fermer et appliquer maintenant",
-        "finalWarningBody": "**{name}** va etre ferme dans quelques minutes pour appliquer un correctif de securite critique.\n\n{apps}\n\nEnregistrez votre travail immediatement.",
+        "finalWarningBody": "**{name}** va être fermé dans quelques minutes pour appliquer un correctif de sécurité critique.\n\n{apps}\n\nEnregistrez votre travail immédiatement.",
         "progressTitle": "Application du correctif {name}",
-        "restartBody": "Le correctif de securite pour **{name}** est applique. Redemarrez des que possible."
+        "restartBody": "Le correctif de sécurité pour **{name}** est appliqué. Redémarrez dès que possible."
       }
     }
   },

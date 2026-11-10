@@ -32,7 +32,7 @@ public enum Template {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = languageCode.hasPrefix("fr")
-            ? "dd/MM/yyyy 'a' HH:mm"
+            ? "dd/MM/yyyy 'à' HH:mm"
             : "yyyy-MM-dd 'at' HH:mm"
         return formatter.string(from: date)
     }
