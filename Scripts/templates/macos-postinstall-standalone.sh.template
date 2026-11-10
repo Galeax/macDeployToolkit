@@ -112,7 +112,12 @@ if [ ! -f "$MANIFEST" ]; then
   exit 1
 fi
 
-"$AGENT" install --manifest "$MANIFEST" --mode "{##DEPLOY_MODE##}" --dialog "$DIALOG"
+# --show-when-not-running governs whether an `interactive` deployment still shows a
+# gate when NO blocking app is open: "true" shows an install notice with a countdown,
+# "false" installs silently in that case. Overridable here without rebuilding the pkg,
+# exactly like the mode above — flip the value and re-upload this script alone.
+"$AGENT" install --manifest "$MANIFEST" --mode "{##DEPLOY_MODE##}" \
+         --show-when-not-running "{##SHOW_WHEN_NOT_RUNNING##}" --dialog "$DIALOG"
 CODE=$?
 
 case $CODE in

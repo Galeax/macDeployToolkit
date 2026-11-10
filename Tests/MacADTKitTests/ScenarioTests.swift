@@ -40,12 +40,14 @@ final class ScenarioTests: XCTestCase {
     private func manifest(
         maxDeferrals: Int = 3,
         deferralDays: Int? = nil,
-        deadline: Date? = nil
+        deadline: Date? = nil,
+        showDialogWhenNotRunning: Bool = true
     ) -> Manifest {
         Manifest(
             packageKey: "slack-2026q3",
             displayName: "Slack",
             version: "4.36.140",
+            showDialogWhenNotRunning: showDialogWhenNotRunning,
             blockingApps: [slack],
             deferral: DeferralPolicy(
                 maxDeferrals: maxDeferrals,
@@ -108,8 +110,12 @@ final class ScenarioTests: XCTestCase {
 
     /// Closing spontaneously must cost nothing: the deferral counter does not move,
     /// and the next pass installs without showing anything.
+    ///
+    /// The "silent next pass" property is exactly what `showDialogWhenNotRunning`
+    /// governs, so this scenario opts out of the install notice to assert it; with
+    /// the default on, that idle pass would instead show a notice.
     func testUserClosesAppHimselfCostsNoDeferral() {
-        let manifest = manifest()
+        let manifest = manifest(showDialogWhenNotRunning: false)
         var state = DeploymentState(packageKey: manifest.packageKey)
 
         let (first, updated) = checkIn(

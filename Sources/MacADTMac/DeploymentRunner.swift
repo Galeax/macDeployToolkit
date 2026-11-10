@@ -470,19 +470,25 @@ public struct DeploymentRunner {
         // between, and the user may have reopened their browser during those few
         // seconds.
         let context = SystemProbe.context(for: manifest, logger: logger)
-        if !context.runningBlockingApps.isEmpty {
-            let names = context.runningBlockingApps.map(\.displayName).joined(separator: ", ")
-            if engine.hasFreshConsent(state, now: now) {
+        if engine.hasFreshConsent(state, now: now) {
+            // The user already consented in a prior pass: never re-prompt. Just
+            // re-close whatever reopened in the window since, if anything did.
+            if !context.runningBlockingApps.isEmpty {
+                let names = context.runningBlockingApps.map(\.displayName).joined(separator: ", ")
                 logger.notice("recent consent: re-closing \(names) without a dialog")
                 let code = closeApps(context.runningBlockingApps)
                 guard code == .success else { return code }
-            } else {
-                // No fresh consent — `install` run on its own, or much later: we
-                // behave like `pre`, dialog included.
-                logger.info("no recent consent, going through the full gate")
-                let (exit, _, _) = gate(manifest, state: &state, now: now)
-                if let exit { return exit }
             }
+        } else {
+            // No fresh consent: let the engine decide. It closes the running apps
+            // after a dialog, shows the idle install notice when
+            // `showDialogWhenNotRunning` is on, or simply proceeds when there is
+            // nothing to do. This is the ONLY gate in the standalone model, whose
+            // post-install calls `install` and never `pre` — so the decision for
+            // "nothing running" has to be taken here too, not only in `pre`.
+            logger.info("no recent consent, going through the full gate")
+            let (exit, _, _) = gate(manifest, state: &state, now: now)
+            if let exit { return exit }
         }
 
         if options.dryRun {

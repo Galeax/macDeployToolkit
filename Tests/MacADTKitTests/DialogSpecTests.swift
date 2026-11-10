@@ -125,6 +125,27 @@ final class DialogSpecTests: XCTestCase {
                       "the final warning must use finalWarningBody")
     }
 
+    /// The "show when not running" notice: no application to close, so the body is
+    /// the install notice (no closing language, no `{apps}` list) and a single
+    /// button whose countdown proceeds with the install.
+    func testInstallNoticeWhenNoAppToClose() {
+        let notice = PromptRequest(
+            apps: [], canDefer: false, deferralsRemaining: 0,
+            deadline: nil, countdownSeconds: 600, persistIntervalSeconds: nil,
+            maxDialogSeconds: 1_200, isFinalWarning: false, closesOnTimeout: true)
+        let spec = DialogSpec.closeApps(
+            manifest: manifest(), request: notice, languageCode: "fr", timeZone: utc)
+
+        XCTAssertNil(spec.button2, "a notice offers no deferral")
+        XCTAssertEqual(spec.timerSeconds, 600, "its countdown proceeds with the install")
+        XCTAssertTrue(spec.message.contains("va etre installe"),
+                      "the notice must use installNoticeBody")
+        XCTAssertFalse(spec.message.contains("fermeture"),
+                       "no closing language when there is nothing to close")
+        XCTAssertFalse(spec.message.contains("- Slack"),
+                       "no app list in an install notice")
+    }
+
     func testExhaustedWithoutForceCloseHasNeitherDeferNorTimer() {
         let spec = DialogSpec.closeApps(
             manifest: manifest(), request: request(canDefer: false, isFinal: false, remaining: 0),
@@ -143,19 +164,55 @@ final class DialogSpecTests: XCTestCase {
 
     // MARK: - swiftDialog arguments
 
-    func testArgumentsAlwaysPinTheDialogOnTop() {
+    /// `--ontop` was removed: on macOS 26, through the agent's launchctl bridge, it
+    /// makes swiftDialog run with no visible window and ignore its timer. The dialog
+    /// must therefore NOT carry it, or no deployment dialog ever shows.
+    func testArgumentsDoNotPinOnTop() {
         let arguments = DialogSpec(title: "T", message: "M", button1: "OK").arguments()
-        XCTAssertTrue(arguments.contains("--ontop"),
-                      "a dialog buried under a meeting is as good as no warning")
+        XCTAssertFalse(arguments.contains("--ontop"),
+                       "--ontop breaks swiftDialog display via launchctl asuser on macOS 26")
         XCTAssertTrue(arguments.contains("--moveable"))
         XCTAssertFalse(arguments.contains("--blurscreen"))
     }
 
-    func testBlockingDialogIsNotMoveableAndBlursScreen() {
+    /// A non-blocking dialog is a compact card in the bottom-right corner, with an
+    /// explicit size. Never `--small`: it also scales `--width`/`--height` by 0.75,
+    /// which truncated the buttons.
+    func testNonBlockingDialogIsCompactBottomRight() {
+        let arguments = DialogSpec(title: "T", message: "M", button1: "OK").arguments()
+        XCTAssertTrue(arguments.contains("--position"))
+        XCTAssertTrue(arguments.contains("bottomright"))
+        XCTAssertTrue(arguments.contains("--width"))
+        XCTAssertTrue(arguments.contains("--height"))
+        XCTAssertFalse(arguments.contains("--small"))
+        XCTAssertTrue(arguments.contains("--messagefont"))
+        XCTAssertTrue(arguments.contains("--titlefont"))
+        // No icon configured → swiftDialog's oversized default is suppressed.
+        XCTAssertTrue(arguments.contains("none"), "the default icon is suppressed")
+    }
+
+    /// A manifest `icon` flows through to swiftDialog's `--icon`, capped in size, and
+    /// takes the place of the suppressed default.
+    func testManifestIconFlowsToSwiftDialog() {
+        let withIcon = Manifest(
+            packageKey: "slack", displayName: "Slack", version: "1",
+            icon: "/Applications/Slack.app")
+        let arguments = DialogSpec.closeApps(
+            manifest: withIcon, request: request(canDefer: false, isFinal: false),
+            languageCode: "fr", timeZone: utc).arguments()
+        XCTAssertTrue(arguments.contains("--icon"))
+        XCTAssertTrue(arguments.contains("/Applications/Slack.app"))
+        XCTAssertTrue(arguments.contains("--iconsize"))
+        XCTAssertFalse(arguments.contains("none"), "a configured icon replaces the suppression")
+    }
+
+    func testBlockingDialogIsCenteredNotMoveableAndBlursScreen() {
         let arguments = DialogSpec(
             title: "T", message: "M", button1: "OK",
             timerSeconds: 60, isBlocking: true).arguments()
         XCTAssertTrue(arguments.contains("--blurscreen"))
+        XCTAssertTrue(arguments.contains("center"), "the final warning stays centered")
+        XCTAssertFalse(arguments.contains("bottomright"))
         XCTAssertFalse(arguments.contains("--moveable"))
         XCTAssertTrue(arguments.contains("--timer"))
         XCTAssertTrue(arguments.contains("60"))
@@ -191,6 +248,52 @@ final class DialogSpecTests: XCTestCase {
         XCTAssertFalse(arguments.contains("--hidetimerbar"))
     }
 
+    // MARK: - Caller-driven countdown
+
+    /// With a command file, the countdown is a `--progress` bar (drawn above the
+    /// buttons) that the helper advances — not swiftDialog's `--timer`, whose bar is
+    /// hard-wired beside the buttons.
+    func testDrivenCountdownIsAProgressBarAboveTheButtons() {
+        let spec = DialogSpec(title: "T", message: "M", button1: "OK", timerSeconds: 60,
+                              countdownText: "Demarrage automatique dans {remaining}")
+        let arguments = spec.arguments(commandFile: "/tmp/x.cmd")
+
+        XCTAssertFalse(arguments.contains("--timer"))
+        XCTAssertEqual(arguments.firstIndex(of: "--progress").map { arguments[$0 + 1] }, "60")
+        XCTAssertTrue(arguments.contains("Demarrage automatique dans 1:00"))
+        XCTAssertEqual(arguments.firstIndex(of: "--commandfile").map { arguments[$0 + 1] }, "/tmp/x.cmd")
+    }
+
+    /// A persistence interval is not a deadline: driven mode shows no bar at all, and
+    /// never relies on `--timer --hidetimerbar`, which does not expire in swiftDialog.
+    func testDrivenPersistenceShowsNoBar() {
+        let spec = DialogSpec(title: "T", message: "M", button1: "OK",
+                              persistIntervalSeconds: 20, maxTotalSeconds: 120)
+        let arguments = spec.arguments(timerOverride: 20, commandFile: "/tmp/x.cmd")
+
+        XCTAssertFalse(arguments.contains("--timer"))
+        XCTAssertFalse(arguments.contains("--hidetimerbar"))
+        XCTAssertFalse(arguments.contains("--progress"))
+        XCTAssertTrue(arguments.contains("--commandfile"))
+    }
+
+    func testCountdownLabelFormatsTimeLeft() {
+        let spec = DialogSpec(title: "T", message: "M", button1: "OK",
+                              countdownText: "Dans {remaining}")
+        XCTAssertEqual(spec.countdownLabel(remaining: 45), "Dans 45 s")
+        XCTAssertEqual(spec.countdownLabel(remaining: 245), "Dans 4:05")
+        XCTAssertEqual(spec.countdownLabel(remaining: -3), "Dans 0 s")
+        XCTAssertEqual(DialogSpec(title: "T", message: "M", button1: "OK").countdownLabel(remaining: 9), "9 s")
+    }
+
+    /// The window is sized to its content: a longer message gets a taller card.
+    func testCompactHeightGrowsWithTheMessage() {
+        let short = DialogSpec(title: "T", message: "one line", button1: "OK", timerSeconds: 60)
+        let long = DialogSpec(title: "T", message: "a\n\n- b\n\nc", button1: "OK", timerSeconds: 60)
+        XCTAssertLessThan(short.compactHeight, long.compactHeight)
+        XCTAssertLessThanOrEqual(long.compactHeight, 480)
+    }
+
     // MARK: - Progress dialog
 
     /// Equivalent of `Show-ADTInstallationProgress`. With no actionable button and
@@ -207,6 +310,9 @@ final class DialogSpecTests: XCTestCase {
                        "a timer would close the dialog before the install finishes")
         XCTAssertFalse(arguments.contains("--button2text"))
         XCTAssertFalse(arguments.contains("--blurscreen"))
+        XCTAssertTrue(arguments.contains("bottomright"), "the progress tile sits bottom-right")
+        XCTAssertFalse(arguments.contains("--small"))
+        XCTAssertTrue(arguments.contains("--width"), "a pinned width keeps the tile from stretching")
     }
 
     func testProgressDialogUsesProgressTitle() {

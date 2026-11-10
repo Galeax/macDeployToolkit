@@ -62,6 +62,8 @@ In Intune ("macOS app (PKG)" type): upload the pkg, paste the **postInstallScrip
 | `displayName` / `version` / `publisher` | — | — |
 | `logName` | derived | Per-app log in `/var/log/MacADT/` |
 | `mode` | `interactive` | `interactive` \| `silent` \| `nonInteractive`. **Just a default** — the deployment's `--mode` wins |
+| `showDialogWhenNotRunning` | `true` | Show the gate even when no blocking app is running (an `interactive` install notice). **A default** — the deployment's `--show-when-not-running` wins |
+| `icon` | — | Dialog icon, passed to swiftDialog's `--icon`: a file path, an app bundle, an `SF=symbol`, a URL. Absent = no icon |
 | `blockingApps[]` | `[]` | `bundleIdentifier` and/or `executableName`, `displayName`. A plain string is accepted |
 | `deferral.maxDeferrals` | `3` | Number of deferrals |
 | `deferral.deferralDays` | — | Sliding window from the first prompt (`-DeferDays`) |

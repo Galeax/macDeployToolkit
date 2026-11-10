@@ -16,6 +16,7 @@ final class DeferralEngineTests: XCTestCase {
 
     private func manifest(
         mode: DeploymentMode = .interactive,
+        showDialogWhenNotRunning: Bool = true,
         deferral: DeferralPolicy = DeferralPolicy(),
         requirements: Requirements = Requirements()
     ) -> Manifest {
@@ -24,6 +25,7 @@ final class DeferralEngineTests: XCTestCase {
             displayName: "Slack",
             version: "4.3.1",
             mode: mode,
+            showDialogWhenNotRunning: showDialogWhenNotRunning,
             blockingApps: [slack, teams],
             deferral: deferral,
             requirements: requirements)
@@ -38,10 +40,67 @@ final class DeferralEngineTests: XCTestCase {
 
     // MARK: - Nominal case
 
-    func testProceedsWhenNothingIsRunning() {
+    /// With `showDialogWhenNotRunning` off, nothing open means a straight install:
+    /// the historical fast path, no dialog, no deferral consumed.
+    func testProceedsWhenNothingIsRunningAndNoticeDisabled() {
+        let decision = engine.evaluate(
+            manifest: manifest(showDialogWhenNotRunning: false), state: state(),
+            context: DeploymentContext(runningBlockingApps: []), now: now)
+        XCTAssertEqual(decision, .proceed)
+    }
+
+    /// The baked-in default: an interactive deployment still shows a gate when
+    /// nothing is running — an install notice with no application to close, but a
+    /// full interactive prompt otherwise, deferral included (a user may postpone the
+    /// update even if the app is not open).
+    func testShowsInstallNoticeWhenNothingRunningByDefault() {
         let decision = engine.evaluate(
             manifest: manifest(), state: state(),
             context: DeploymentContext(runningBlockingApps: []), now: now)
+
+        guard case .prompt(let request) = decision else {
+            return XCTFail("expected .prompt notice, got \(decision)")
+        }
+        XCTAssertTrue(request.apps.isEmpty, "nothing to close")
+        XCTAssertTrue(request.canDefer, "the update can still be deferred")
+        XCTAssertEqual(request.deferralsRemaining, 3, "the deferral policy applies as usual")
+    }
+
+    /// Deferral on the idle notice follows the policy: with none left, no defer
+    /// button, and it becomes a final warning when a forced close is allowed.
+    func testIdleNoticeHonoursExhaustedDeferrals() {
+        let decision = engine.evaluate(
+            manifest: manifest(deferral: DeferralPolicy(maxDeferrals: 1)),
+            state: state(deferralsUsed: 1),
+            context: DeploymentContext(runningBlockingApps: []), now: now)
+
+        guard case .prompt(let request) = decision else {
+            return XCTFail("expected .prompt, got \(decision)")
+        }
+        XCTAssertFalse(request.canDefer, "deferrals exhausted")
+        XCTAssertTrue(request.isFinalWarning)
+    }
+
+    /// The notice is an interactive courtesy only. `silent` and `nonInteractive`
+    /// carry no gate, so with nothing running they install straight away even with
+    /// the notice enabled.
+    func testNonInteractiveModesIgnoreTheNoticeWhenNothingRunning() {
+        for mode in [DeploymentMode.silent, .nonInteractive] {
+            let decision = engine.evaluate(
+                manifest: manifest(mode: mode, showDialogWhenNotRunning: true),
+                state: state(),
+                context: DeploymentContext(runningBlockingApps: []), now: now)
+            XCTAssertEqual(decision, .proceed, "mode \(mode) must not gate on an idle device")
+        }
+    }
+
+    /// No one to read the notice: a headless / logged-out device installs rather
+    /// than waiting, since nothing is blocking.
+    func testProceedsWhenNothingRunningAndNoConsoleUser() {
+        let decision = engine.evaluate(
+            manifest: manifest(), state: state(),
+            context: DeploymentContext(runningBlockingApps: [], hasConsoleUser: false),
+            now: now)
         XCTAssertEqual(decision, .proceed)
     }
 

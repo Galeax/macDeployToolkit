@@ -128,25 +128,44 @@ public enum DialogRunner {
                 logger.info("re-showing the dialog (presentation #\(presentations))")
             }
 
-            // Margin on the process timeout: it is swiftDialog that must expire
-            // and return code 4, not us killing it — a killed dialog returns no
-            // usable outcome.
+            // The countdown is driven from here, not by swiftDialog's `--timer`: its
+            // bar is hard-wired beside the buttons, and once hidden it never expires
+            // at all (both verified on swiftDialog 3.1.1). We advance a `--progress`
+            // bar through the command file and close the dialog ourselves.
+            let commandFile = NSTemporaryDirectory() + "macadt-dialog-\(UUID().uuidString).cmd"
+            FileManager.default.createFile(atPath: commandFile, contents: nil)
+            let ticker = timer.map { CountdownTicker(spec: spec, seconds: $0, commandFile: commandFile) }
+            ticker?.start()
+            defer {
+                ticker?.cancel()
+                try? FileManager.default.removeItem(atPath: commandFile)
+            }
+
+            // Margin on the process timeout: the `quit:` we send at expiry should
+            // close the dialog; the kill is only the safety net.
             let processTimeout = timer.map { TimeInterval($0) + 30 } ?? 3_600
             let startedAt = Date()
             let result = try ProcessRunner.run(
-                dialogPath, spec.arguments(timerOverride: timer), timeout: processTimeout)
+                dialogPath, spec.arguments(timerOverride: timer, commandFile: commandFile),
+                timeout: processTimeout)
+            let expired = ticker?.cancel() ?? false
 
             // `max(1, ...)` guarantees the counter advances: without it, a
             // swiftDialog that exited instantly would produce a tight infinite
             // loop.
             elapsed += max(1, Int(Date().timeIntervalSince(startedAt).rounded()))
 
-            if result.timedOut {
+            var outcome = DialogOutcome.from(exitCode: result.exitCode)
+            // A dialog we closed at expiry exits like a user quit (code 5), or is
+            // killed if it ignored `quit:`. Either way it is an expiry — unless the
+            // user clicked a button in the same instant, which is honored.
+            if expired, outcome != .primary, outcome != .secondary {
+                outcome = .timerExpired
+            } else if result.timedOut {
                 logger.warning("swiftDialog killed after \(Int(processTimeout)) s without returning an outcome")
                 return .unknown
             }
 
-            let outcome = DialogOutcome.from(exitCode: result.exitCode)
             if outcome == .timerExpired {
                 if let resolved = DialogLoop.outcomeForTimerExpiry(spec: spec, elapsedSeconds: elapsed) {
                     logger.info("dialog: \(resolved.rawValue)")
@@ -158,6 +177,65 @@ public enum DialogRunner {
             logger.info("dialog: \(outcome.rawValue) (code \(result.exitCode))")
             return outcome
         }
+    }
+}
+
+/// Advances the countdown bar of a running dialog, then closes it.
+///
+/// One line per second into swiftDialog's command file: the bar position and the
+/// label under it. At zero, `quit:`.
+private final class CountdownTicker: @unchecked Sendable {
+
+    private let spec: DialogSpec
+    private let seconds: Int
+    private let commandFile: String
+    private let queue = DispatchQueue(label: "com.macadt.deploy.countdown")
+    private let lock = NSLock()
+    private var source: DispatchSourceTimer?
+    private var elapsed = 0
+    private var expired = false
+
+    init(spec: DialogSpec, seconds: Int, commandFile: String) {
+        self.spec = spec
+        self.seconds = seconds
+        self.commandFile = commandFile
+    }
+
+    func start() {
+        let source = DispatchSource.makeTimerSource(queue: queue)
+        source.schedule(deadline: .now() + 1, repeating: 1)
+        source.setEventHandler { [weak self] in self?.tick() }
+        lock.lock(); self.source = source; lock.unlock()
+        source.resume()
+    }
+
+    /// Stops the ticker. Returns whether the countdown had run out.
+    @discardableResult
+    func cancel() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        source?.cancel()
+        source = nil
+        return expired
+    }
+
+    private func tick() {
+        lock.lock(); defer { lock.unlock() }
+        guard source != nil, !expired else { return }
+        elapsed += 1
+        var lines: [String] = []
+        // Only a real deadline shows its bar; a persistence interval is silent.
+        if spec.timerSeconds != nil {
+            lines.append("progress: \(elapsed)")
+            lines.append("progresstext: \(spec.countdownLabel(remaining: seconds - elapsed))")
+        }
+        if elapsed >= seconds {
+            expired = true
+            lines.append("quit:")
+        }
+        guard !lines.isEmpty, let handle = FileHandle(forWritingAtPath: commandFile) else { return }
+        handle.seekToEndOfFile()
+        handle.write(Data((lines.joined(separator: "\n") + "\n").utf8))
+        try? handle.close()
     }
 }
 #endif

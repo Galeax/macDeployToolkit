@@ -48,6 +48,10 @@ public struct DialogSpec: Codable, Equatable, Sendable {
     /// `pre` and `post` and none of our processes runs during it.
     public var isIndeterminateProgress: Bool
 
+    /// Label shown under the countdown bar, with a `{remaining}` token the helper
+    /// re-renders every second. `nil` falls back to the bare time left.
+    public var countdownText: String?
+
     public init(
         title: String,
         message: String,
@@ -59,7 +63,8 @@ public struct DialogSpec: Codable, Equatable, Sendable {
         maxTotalSeconds: Int? = nil,
         isBlocking: Bool = false,
         blursScreen: Bool = false,
-        isIndeterminateProgress: Bool = false
+        isIndeterminateProgress: Bool = false,
+        countdownText: String? = nil
     ) {
         self.title = title
         self.message = message
@@ -72,24 +77,61 @@ public struct DialogSpec: Codable, Equatable, Sendable {
         self.isBlocking = isBlocking
         self.blursScreen = blursScreen
         self.isIndeterminateProgress = isIndeterminateProgress
+        self.countdownText = countdownText
+    }
+
+    /// Text under the countdown bar for a given time left: "45 s" under a minute,
+    /// "4:05" above.
+    public func countdownLabel(remaining: Int) -> String {
+        let seconds = max(0, remaining)
+        let time = seconds < 60
+            ? "\(seconds) s"
+            : "\(seconds / 60):" + (seconds % 60 < 10 ? "0" : "") + "\(seconds % 60)"
+        guard let countdownText else { return time }
+        return Template.render(countdownText, values: ["remaining": time])
+    }
+
+    /// Height of a non-blocking dialog. swiftDialog does not fit its window to the
+    /// content: left alone it opens far too tall, and too small a value pushes the
+    /// buttons out of view. So the height is derived from what is actually shown —
+    /// measured on the test Mac at 520 pt wide: 260 pt holds a two-line message, the
+    /// countdown bar and the buttons.
+    var compactHeight: Int {
+        let lines = message.split(separator: "\n", omittingEmptySubsequences: false).count
+        let base = timerSeconds != nil ? 260 : 215
+        return min(480, base + 16 * max(0, lines - 1))
     }
 
     /// Arguments for the swiftDialog binary.
     ///
-    /// `--ontop` is systematic: a deployment dialog buried under a video-call window
-    /// is useless, and the user concludes that the forced close arrived without
-    /// warning.
+    /// `--ontop` was once systematic, so a deployment dialog would not stay buried
+    /// under a video-call window. It had to be removed: on macOS 26 (swiftDialog
+    /// launched through the agent's `launchctl asuser` + `sudo -u` bridge), `--ontop`
+    /// makes swiftDialog run with NO visible window and ignore its own `--timer`, so
+    /// the process never returns and the helper kills it at the timeout — a dialog
+    /// that never shows. Burial is the lesser evil, and the persistence re-show
+    /// already brings an ignored dialog back to the front. Revisit if a swiftDialog
+    /// release fixes `--ontop` in that context.
     ///
     /// - Parameter timerOverride: timer for this iteration, computed by `DialogLoop`.
     ///   Differs from `timerSeconds` on a persistent dialog, where each presentation
     ///   lasts only one interval.
-    public func arguments(timerOverride: Int? = nil) -> [String] {
+    /// - Parameter commandFile: swiftDialog command file the caller will drive. When
+    ///   given, the countdown is NOT swiftDialog's own `--timer` — whose bar is
+    ///   hard-wired beside the buttons, and which never expires once its bar is
+    ///   hidden (both read in swiftDialog 3.1.1's source and confirmed on the Mac).
+    ///   It is a `--progress` bar instead, drawn full-width above the buttons, which
+    ///   the caller advances and then closes with `quit:` — see `DialogRunner`.
+    ///   Without it (detached dialogs nobody drives) the native timer is kept.
+    public func arguments(timerOverride: Int? = nil, commandFile: String? = nil) -> [String] {
         var arguments = [
             "--title", title,
             "--message", message,
             "--button1text", button1,
-            "--ontop",
-            "--position", "center",
+            // Smaller type: swiftDialog's default reads oversized for a deployment
+            // prompt.
+            "--messagefont", "size=13",
+            "--titlefont", "size=18",
         ]
 
         // A progress dialog has neither an actionable button nor a timer: it lives as
@@ -97,24 +139,52 @@ public struct DialogSpec: Codable, Equatable, Sendable {
         // **To be validated by the spike**, like the exit codes: these options are
         // not part of a contract published by swiftDialog.
         if isIndeterminateProgress {
-            arguments += ["--progress", "--button1disabled", "--small", "--moveable"]
-            if let iconPath { arguments += ["--icon", iconPath] }
+            // A tile in the bottom-right corner, same width as the gate dialog. No
+            // `--small`: it scales `--width`/`--height` by 0.75 as well, which is what
+            // squeezed the earlier attempts.
+            arguments += ["--progress", "--button1disabled", "--moveable",
+                          "--position", "bottomright", "--width", "520", "--height", "200"]
+            if let iconPath { arguments += ["--icon", iconPath, "--iconsize", "64"] }
+            else { arguments += ["--icon", "none"] }
             return arguments
         }
 
         if let button2 { arguments += ["--button2text", button2] }
-        if let iconPath { arguments += ["--icon", iconPath] }
-        if let timer = timerOverride ?? timerSeconds {
-            arguments += ["--timer", String(timer)]
-            // A persistence timer is not a deadline: it only serves to return control
-            // so the dialog can be shown again. Showing its bar would make a close
-            // countdown read where there is none, and the user sees the window reopen
-            // without anything happening — the exact symptom reported on macOS 26.
-            // Only a final warning, which carries `timerSeconds`, shows its timer.
-            if timerSeconds == nil { arguments.append("--hidetimerbar") }
+        if let iconPath {
+            // swiftDialog's default icon is 150 pt and inflates the window; 64 pt
+            // is the standard macOS alert size and sits right in a 520 pt card.
+            arguments += ["--icon", iconPath, "--iconsize", "64"]
+        } else {
+            // No icon configured: suppress swiftDialog's large default placeholder,
+            // which otherwise inflates the dialog's height out of all proportion to
+            // its width.
+            arguments += ["--icon", "none"]
         }
-        if isBlocking { arguments += ["--blurscreen", "--quitkey", "x"] }
-        else { arguments += ["--moveable"] }
+        if let timer = timerOverride ?? timerSeconds {
+            if commandFile != nil {
+                // Caller-driven countdown: a full-width bar above the buttons. A
+                // persistence interval (no `timerSeconds`) is not a deadline, so it
+                // shows nothing at all — the caller just closes and re-shows.
+                if timerSeconds != nil {
+                    arguments += ["--progress", String(timer),
+                                  "--progresstext", countdownLabel(remaining: timer)]
+                }
+            } else {
+                arguments += ["--timer", String(timer)]
+                if timerSeconds == nil { arguments.append("--hidetimerbar") }
+            }
+        }
+        if let commandFile { arguments += ["--commandfile", commandFile] }
+        if isBlocking {
+            // The final warning monopolizes the screen on purpose: centered, blurred,
+            // not dodgeable.
+            arguments += ["--position", "center", "--blurscreen", "--quitkey", "x"]
+        } else {
+            // Every other dialog is a compact card in the bottom-right corner, sized
+            // to its content (see `compactHeight`).
+            arguments += ["--position", "bottomright", "--width", "520",
+                          "--height", String(compactHeight), "--moveable"]
+        }
         if blursScreen && !isBlocking { arguments.append("--blurscreen") }
         return arguments
     }
@@ -131,7 +201,7 @@ public struct DialogSpec: Codable, Equatable, Sendable {
             title: Template.render(strings.title, values: values),
             message: Template.render(strings.progressTitle, values: values),
             button1: "",
-            iconPath: iconPath,
+            iconPath: iconPath ?? manifest.icon,
             isIndeterminateProgress: true)
     }
 
@@ -153,7 +223,7 @@ public struct DialogSpec: Codable, Equatable, Sendable {
             title: Template.render(strings.title, values: values),
             message: Template.render(strings.completionBody, values: values),
             button1: "OK",
-            iconPath: iconPath,
+            iconPath: iconPath ?? manifest.icon,
             timerSeconds: secondsOnScreen,
             maxTotalSeconds: secondsOnScreen)
     }
@@ -174,7 +244,15 @@ public struct DialogSpec: Codable, Equatable, Sendable {
             manifest: manifest, request: request,
             languageCode: languageCode, timeZone: timeZone)
 
-        let body = request.isFinalWarning ? strings.finalWarningBody : strings.closeAppsBody
+        // With no application to close (the "show when not running" notice), the
+        // close/final-warning copy — which lists `{apps}` — would be empty and
+        // misleading, so a dedicated install-notice body is used instead.
+        let body: String
+        if request.apps.isEmpty {
+            body = strings.installNoticeBody
+        } else {
+            body = request.isFinalWarning ? strings.finalWarningBody : strings.closeAppsBody
+        }
 
         return DialogSpec(
             title: Template.render(strings.title, values: values),
@@ -183,7 +261,7 @@ public struct DialogSpec: Codable, Equatable, Sendable {
             button2: request.canDefer
                 ? Template.render(strings.deferButton, values: values)
                 : nil,
-            iconPath: iconPath,
+            iconPath: iconPath ?? manifest.icon,
             // A countdown on any dialog whose expiry triggers the installation —
             // including when a deferral remains possible. Without it, a dialog left
             // open would suspend the deployment indefinitely: the gate advanced only
@@ -194,15 +272,17 @@ public struct DialogSpec: Codable, Equatable, Sendable {
             // deferral mechanism now only protects the user present to click.
             timerSeconds: request.closesOnTimeout ? request.countdownSeconds : nil,
             // Persistence only remains where no countdown bounds the dialog: a visible
-            // timer makes re-display pointless, and `--ontop` is enough to keep it in
-            // front.
+            // timer makes re-display pointless. (It used to also lean on `--ontop` to
+            // keep the window in front; that flag is gone — see `arguments()` — so a
+            // bounded dialog simply relies on its timer.)
             persistIntervalSeconds: request.closesOnTimeout
                 ? nil
                 : request.persistIntervalSeconds,
             maxTotalSeconds: request.closesOnTimeout
                 ? request.countdownSeconds
                 : request.maxDialogSeconds,
-            isBlocking: request.isFinalWarning)
+            isBlocking: request.isFinalWarning,
+            countdownText: strings.countdownText)
     }
 }
 

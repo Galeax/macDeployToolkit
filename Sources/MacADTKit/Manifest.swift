@@ -424,6 +424,15 @@ public struct LocalizedStrings: Codable, Equatable, Sendable {
     /// `Show-ADTInstallationPrompt` in `-NoWait`.
     public var completionBody: String
 
+    /// Gate body used when `showDialogWhenNotRunning` is on and NO application is
+    /// running: an install notice, with no "closing" language and no `{apps}` list
+    /// (there is nothing to close).
+    public var installNoticeBody: String
+
+    /// Label under the countdown bar. `{remaining}` is substituted every second by
+    /// the helper with the time left ("45 s", "4:05").
+    public var countdownText: String
+
     public init(
         title: String,
         closeAppsBody: String,
@@ -432,7 +441,9 @@ public struct LocalizedStrings: Codable, Equatable, Sendable {
         finalWarningBody: String,
         progressTitle: String,
         restartBody: String,
-        completionBody: String = "L'installation de **{name}** est terminee."
+        completionBody: String = "L'installation de **{name}** est terminee.",
+        installNoticeBody: String = "**{name}** {version} va etre installe.",
+        countdownText: String = "Demarrage automatique dans {remaining}"
     ) {
         self.title = title
         self.closeAppsBody = closeAppsBody
@@ -442,6 +453,8 @@ public struct LocalizedStrings: Codable, Equatable, Sendable {
         self.progressTitle = progressTitle
         self.restartBody = restartBody
         self.completionBody = completionBody
+        self.installNoticeBody = installNoticeBody
+        self.countdownText = countdownText
     }
 
     /// Fallback values, as pure literals so they depend on no other static
@@ -454,11 +467,13 @@ public struct LocalizedStrings: Codable, Equatable, Sendable {
         finalWarningBody: "**{name}** must be installed now:\n\n{apps}",
         progressTitle: "Installing {name}",
         restartBody: "**{name}** has been installed. A restart is required.",
-        completionBody: "**{name}** has been installed.")
+        completionBody: "**{name}** has been installed.",
+        installNoticeBody: "**{name}** {version} will be installed.",
+        countdownText: "Starts automatically in {remaining}")
 
     private enum CodingKeys: String, CodingKey {
         case title, closeAppsBody, deferButton, closeButton
-        case finalWarningBody, progressTitle, restartBody, completionBody
+        case finalWarningBody, progressTitle, restartBody, completionBody, installNoticeBody, countdownText
     }
 
     /// Lenient decoding, each absent key falling back to the fallback.
@@ -477,6 +492,8 @@ public struct LocalizedStrings: Codable, Equatable, Sendable {
         progressTitle = try c.decode(String.self, "progressTitle") ?? base.progressTitle
         restartBody = try c.decode(String.self, "restartBody") ?? base.restartBody
         completionBody = try c.decode(String.self, "completionBody") ?? base.completionBody
+        installNoticeBody = try c.decode(String.self, "installNoticeBody") ?? base.installNoticeBody
+        countdownText = try c.decode(String.self, "countdownText") ?? base.countdownText
     }
 }
 
@@ -508,7 +525,9 @@ public struct Messages: Codable, Equatable, Sendable {
             finalWarningBody: "**{name}** doit etre installe maintenant. Les applications suivantes vont etre fermees :\n\n{apps}\n\nEnregistrez votre travail immediatement.",
             progressTitle: "Installation de {name} en cours",
             restartBody: "L'installation de **{name}** est terminee. Un redemarrage est necessaire.",
-            completionBody: "**{name}** {version} est installe."
+            completionBody: "**{name}** {version} est installe.",
+            installNoticeBody: "**{name}** {version} va etre installe.",
+            countdownText: "Demarrage automatique dans {remaining}"
         ),
         "en": LocalizedStrings(
             title: "Software update",
@@ -518,7 +537,9 @@ public struct Messages: Codable, Equatable, Sendable {
             finalWarningBody: "**{name}** must be installed now. The following applications will be closed:\n\n{apps}\n\nSave your work immediately.",
             progressTitle: "Installing {name}",
             restartBody: "**{name}** has been installed. A restart is required.",
-            completionBody: "**{name}** {version} has been installed."
+            completionBody: "**{name}** {version} has been installed.",
+            installNoticeBody: "**{name}** {version} will be installed.",
+            countdownText: "Starts automatically in {remaining}"
         ),
     ]
 
@@ -582,6 +603,27 @@ public struct Manifest: Codable, Equatable, Sendable {
 
     public var action: DeploymentAction
     public var mode: DeploymentMode
+
+    /// Whether the mode's UI still engages when NO blocking application is running.
+    ///
+    /// `true` (the default, baked in here): an `interactive` deployment shows its
+    /// gate even on a device where nothing is open — a courtesy install notice with
+    /// a countdown, no application to close. `silent` and `nonInteractive` carry no
+    /// gate, so this changes nothing for them.
+    ///
+    /// `false`: the historical behavior — with nothing running, install straight
+    /// away, no dialog.
+    ///
+    /// Like `mode`, it is only a default: the deployment's `--show-when-not-running`
+    /// wins, so it can be flipped in the generated post-install without a rebuild.
+    public var showDialogWhenNotRunning: Bool
+
+    /// Icon shown in the dialogs, passed verbatim to swiftDialog's `--icon`: a file
+    /// path, an app bundle (`/Applications/Google Chrome.app`), an SF Symbol
+    /// (`SF=arrow.down.circle`), a URL, or one of its built-ins. `nil` suppresses the
+    /// icon (swiftDialog's oversized default would distort the compact dialog).
+    public var icon: String?
+
     public var blockingApps: [BlockingAppSpec]
     public var deferral: DeferralPolicy
     public var requirements: Requirements
@@ -615,6 +657,8 @@ public struct Manifest: Codable, Equatable, Sendable {
         logName: String? = nil,
         action: DeploymentAction = .install,
         mode: DeploymentMode = .interactive,
+        showDialogWhenNotRunning: Bool = true,
+        icon: String? = nil,
         blockingApps: [BlockingAppSpec] = [],
         deferral: DeferralPolicy = DeferralPolicy(),
         requirements: Requirements = Requirements(),
@@ -634,6 +678,8 @@ public struct Manifest: Codable, Equatable, Sendable {
         self.logName = logName
         self.action = action
         self.mode = mode
+        self.showDialogWhenNotRunning = showDialogWhenNotRunning
+        self.icon = icon
         self.blockingApps = blockingApps
         self.deferral = deferral
         self.requirements = requirements
@@ -648,7 +694,7 @@ public struct Manifest: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, packageKey, displayName, version, publisher, logName
-        case action, mode, blockingApps, deferral, requirements
+        case action, mode, showDialogWhenNotRunning, icon, blockingApps, deferral, requirements
         case detection, uninstall, hooks, payload, messages, ignoredExitCodes, restartAction
     }
 
@@ -679,6 +725,12 @@ public struct Manifest: Codable, Equatable, Sendable {
         } else {
             mode = .interactive
         }
+
+        // Baked-in default: show even when nothing is running. Absent key → true.
+        showDialogWhenNotRunning = try c.decode(
+            Bool.self, "showDialogWhenNotRunning", "showWhenNotRunning") ?? true
+
+        icon = try c.decode(String.self, "icon", "iconPath")
 
         blockingApps = try c.decode(
             [BlockingAppSpec].self,
@@ -751,6 +803,7 @@ public struct Manifest: Codable, Equatable, Sendable {
     public func applying(_ options: CommandLineOptions) throws -> Manifest {
         var updated = self
         if let mode = options.modeOverride { updated.mode = mode }
+        if let show = options.showWhenNotRunningOverride { updated.showDialogWhenNotRunning = show }
         if let implied = options.command.impliedAction { updated.action = implied }
         if let action = options.actionOverride { updated.action = action }
         try updated.validate()

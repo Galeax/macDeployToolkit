@@ -48,6 +48,9 @@ MANIFEST=""
 PAYLOAD_FILE=""
 HOOKS_DIR=""
 DEPLOY_MODE="Interactive"
+# Default rendered into the post-install. Matches macadt's own baked-in default
+# (show the gate even when nothing is running). Editable afterwards in the script.
+SHOW_WHEN_NOT_RUNNING="true"
 UNSIGNED=0
 OUT_DIR=".build/apps"
 
@@ -57,6 +60,7 @@ while [ $# -gt 0 ]; do
     -p|--payload)   PAYLOAD_FILE="$2"; shift 2 ;;
     --hooks-dir)    HOOKS_DIR="$2"; shift 2 ;;
     --mode)         DEPLOY_MODE="$2"; shift 2 ;;
+    --show-when-not-running) SHOW_WHEN_NOT_RUNNING="$2"; shift 2 ;;
     -o|--out)       OUT_DIR="$2"; shift 2 ;;
     --unsigned)     UNSIGNED=1; shift ;;
     -h|--help)      grep '^#' "$0" | cut -c3-; exit 0 ;;
@@ -72,6 +76,11 @@ done
 case "$DEPLOY_MODE" in
   Interactive|NonInteractive|Silent) ;;
   *) echo "--mode must be Interactive, NonInteractive or Silent" >&2; exit 2 ;;
+esac
+
+case "$SHOW_WHEN_NOT_RUNNING" in
+  true|false) ;;
+  *) echo "--show-when-not-running must be true or false" >&2; exit 2 ;;
 esac
 
 # ------------------------------------------------------- reading the manifest
@@ -150,7 +159,22 @@ FINAL_PKG="$OUT_DIR/$PACKAGE_KEY/$PACKAGE_KEY.pkg"
 # before running a hook, and would refuse a writable file.
 # One identifier per application, otherwise two wrappers would each take the
 # other for an update of itself.
+# swiftDialog ships as a relocatable .app bundle. Left to its default, pkgbuild
+# marks it `BundleIsRelocatable`, and on any device that already has swiftDialog
+# somewhere — the build host always does, it is a build dependency — installer
+# diverts the bundle to that existing copy via Spotlight instead of laying it down
+# at /usr/local/macadt, leaving the agent without its embedded Dialog.app
+# ("swiftDialog not found"). Pin every bundle to its root-relative path.
+COMPONENT_PLIST="$OUT_DIR/$PACKAGE_KEY/$PACKAGE_KEY-components.plist"
+pkgbuild --analyze --root "$STAGING" "$COMPONENT_PLIST" >/dev/null
+i=0
+while plutil -replace "$i.BundleIsRelocatable" -bool false "$COMPONENT_PLIST" >/dev/null 2>&1; do
+  i=$((i + 1))
+done
+echo "   bundles pinned: $i (BundleIsRelocatable=false)"
+
 pkgbuild --root "$STAGING" \
+         --component-plist "$COMPONENT_PLIST" \
          --identifier "com.macadt.deploy.app.$PACKAGE_KEY" \
          --version "$VERSION" \
          --install-location / \
@@ -182,6 +206,7 @@ POSTINSTALL="$OUT_DIR/$PACKAGE_KEY/$PACKAGE_KEY-postinstall.sh"
 # therefore never mention their own tokens literally.
 sed -e "s|{##PACKAGE_KEY##}|$PACKAGE_KEY|g" \
     -e "s|{##DEPLOY_MODE##}|$DEPLOY_MODE|g" \
+    -e "s|{##SHOW_WHEN_NOT_RUNNING##}|$SHOW_WHEN_NOT_RUNNING|g" \
     "$TEMPLATE" > "$POSTINSTALL"
 
 if grep -q '{##' "$POSTINSTALL"; then

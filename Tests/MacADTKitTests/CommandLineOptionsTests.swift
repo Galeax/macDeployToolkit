@@ -126,6 +126,31 @@ final class CommandLineOptionsTests: XCTestCase {
             .repair)
     }
 
+    func testShowWhenNotRunningOverrideParsesBooleanSpellings() throws {
+        XCTAssertEqual(
+            try CommandLineOptions.parse(
+                ["install", "-m", "/x", "--show-when-not-running", "true"]).showWhenNotRunningOverride,
+            true)
+        XCTAssertEqual(
+            try CommandLineOptions.parse(
+                ["install", "-m", "/x", "--show-when-not-running", "false"]).showWhenNotRunningOverride,
+            false)
+        XCTAssertEqual(
+            try CommandLineOptions.parse(
+                ["install", "-m", "/x", "--dialog-when-not-running", "0"]).showWhenNotRunningOverride,
+            false)
+    }
+
+    func testRejectsUnknownShowWhenNotRunningValue() {
+        XCTAssertThrowsError(
+            try CommandLineOptions.parse(["install", "-m", "/x", "--show-when-not-running", "maybe"])
+        ) { error in
+            XCTAssertEqual(
+                error as? ArgumentError,
+                .invalidValue(flag: "--show-when-not-running", value: "maybe"))
+        }
+    }
+
     func testRejectsUnknownModeRatherThanDefaulting() {
         XCTAssertThrowsError(
             try CommandLineOptions.parse(["pre", "-m", "/x", "--mode", "Turbo"])
@@ -137,6 +162,7 @@ final class CommandLineOptionsTests: XCTestCase {
     func testNoOverrideByDefault() throws {
         let options = try CommandLineOptions.parse(["pre", "-m", "/x"])
         XCTAssertNil(options.modeOverride)
+        XCTAssertNil(options.showWhenNotRunningOverride)
         XCTAssertNil(options.actionOverride)
     }
 

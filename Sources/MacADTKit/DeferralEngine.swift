@@ -162,9 +162,21 @@ public struct DeferralEngine: Sendable {
             return .requirementFailed("macOS \(current) present, \(minimum) required at minimum")
         }
 
-        // 2. Nothing running: we install, without consuming a deferral.
+        // 2. Nothing running.
         let blocking = context.runningBlockingApps
-        guard !blocking.isEmpty else { return .proceed }
+        if blocking.isEmpty {
+            // Install straight away, unless the deployment wants its interactive gate
+            // shown anyway and someone is there to see it. When it does, fall through
+            // and treat it as a normal interactive prompt — same deferral, countdown
+            // and exhaustion rules — only with no application to close (the dialog then
+            // uses the install-notice body). Non-interactive modes carry no gate, and a
+            // headless device has no one to prompt: both just proceed.
+            guard manifest.showDialogWhenNotRunning,
+                  manifest.mode == .interactive,
+                  context.hasConsoleUser else {
+                return .proceed
+            }
+        }
 
         let policy = manifest.deferral
         let trigger = exhaustionTrigger(policy: policy, state: state, now: now)

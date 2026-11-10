@@ -105,6 +105,13 @@ public struct CommandLineOptions: Equatable, Sendable {
     /// no way to reach the agent.
     public var modeOverride: DeploymentMode?
 
+    /// Overrides the manifest's `showDialogWhenNotRunning`.
+    ///
+    /// Rendered into the generated post-install next to `--mode`, so an operator can
+    /// force or disable the "show even when nothing is running" behavior per
+    /// deployment, without rebuilding the pkg.
+    public var showWhenNotRunningOverride: Bool?
+
     /// Overrides the action, itself already deduced from the subcommand.
     /// Exists for parity with `-DeploymentType` on the PSADT side.
     public var actionOverride: DeploymentAction?
@@ -123,6 +130,7 @@ public struct CommandLineOptions: Equatable, Sendable {
         language: String? = nil,
         force: Bool = false,
         modeOverride: DeploymentMode? = nil,
+        showWhenNotRunningOverride: Bool? = nil,
         actionOverride: DeploymentAction? = nil
     ) {
         self.command = command
@@ -138,6 +146,7 @@ public struct CommandLineOptions: Equatable, Sendable {
         self.language = language
         self.force = force
         self.modeOverride = modeOverride
+        self.showWhenNotRunningOverride = showWhenNotRunningOverride
         self.actionOverride = actionOverride
     }
 
@@ -192,6 +201,12 @@ public struct CommandLineOptions: Equatable, Sendable {
                     throw ArgumentError.invalidValue(flag: flag, value: raw)
                 }
                 options.modeOverride = parsed
+            case "--show-when-not-running", "--dialog-when-not-running":
+                let raw = try nextValue(for: flag)
+                guard let parsed = CommandLineOptions.parseBool(raw) else {
+                    throw ArgumentError.invalidValue(flag: flag, value: raw)
+                }
+                options.showWhenNotRunningOverride = parsed
             case "--action", "--deployment-type":
                 let raw = try nextValue(for: flag)
                 guard let parsed = DeploymentAction(lenient: raw) else {
@@ -225,6 +240,17 @@ public struct CommandLineOptions: Equatable, Sendable {
         }
     }
 
+    /// Lenient boolean for `--show-when-not-running`: accepts the common spellings a
+    /// generated script or an operator might write. `nil` on anything else, so an
+    /// obvious typo is refused rather than silently read as `false`.
+    static func parseBool(_ raw: String) -> Bool? {
+        switch raw.lowercased() {
+        case "true", "yes", "on", "1":  return true
+        case "false", "no", "off", "0": return false
+        default:                        return nil
+        }
+    }
+
     public static let usage = """
     macadt-deploy — macOS deployment wrapper, invoked by Intune
 
@@ -248,6 +274,9 @@ public struct CommandLineOptions: Equatable, Sendable {
       -p, --package <path>      Path of the .pkg, to query RestartAction
           --mode <mode>         Override the mode: Interactive | NonInteractive
                                 | Silent | Auto (alias --deploy-mode)
+          --show-when-not-running <bool>
+                                Override showing the gate when no app is running:
+                                true | false (alias --dialog-when-not-running)
           --action <action>      Override the action: Install | Uninstall | Repair
                                 (alias --deployment-type)
       -n, --dry-run             Run nothing: evaluate and print the plan
